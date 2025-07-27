@@ -29,17 +29,56 @@ def fetch_mes_data(interval="1d", range_days="30d") -> pd.DataFrame:
     return df
 
 def calculate_mes_score(df: pd.DataFrame) -> tuple[int, str]:
-    """חישוב ציון MES על פי שינוי יומי + טווח תנועה"""
+    """
+    Calculate a MES score based on daily percentage change and price range.
+
+    The function expects a DataFrame with at least two rows representing
+    consecutive days. It gracefully handles different column sets:
+
+    * If the DataFrame has ``high`` and ``low`` columns, the price range is
+      computed from those.
+    * If ``high``/``low`` are missing but ``open`` and ``close`` are present,
+      the range is estimated as the absolute difference between ``close`` and
+      ``open``.
+
+    If there are fewer than two rows or the necessary columns are missing,
+    a neutral score of 50 is returned with an explanation.
+    """
+    # Need at least two data points to compute a change
     if len(df) < 2:
         return 50, "🔒 אין מספיק נתונים להשוואה יומית"
 
+    # Work on lowercase column names for flexibility
+    df_cols = {c.lower(): c for c in df.columns}
     today = df.iloc[-1]
     yesterday = df.iloc[-2]
 
-    delta = ((today["close"] - yesterday["close"]) / yesterday["close"]) * 100
-    price_range = today["high"] - today["low"]
+    # Retrieve close values (fallback to uppercase if needed)
+    close_col = df_cols.get("close", df_cols.get("close"))
+    open_col = df_cols.get("open")
 
-    # ניקוד לפי שינוי יומי
+    if close_col is None:
+        # Can't compute delta without close prices
+        return 50, "🔒 אין נתוני close לחישוב MES"
+
+    today_close = today[close_col]
+    yesterday_close = yesterday[close_col]
+    delta = ((today_close - yesterday_close) / yesterday_close) * 100
+
+    # Determine price range
+    high_col = df_cols.get("high")
+    low_col = df_cols.get("low")
+    if high_col and low_col:
+        # Use high/low columns if available
+        price_range = today[high_col] - today[low_col]
+    elif open_col:
+        # Fallback: use absolute difference between open and close as range
+        price_range = abs(today_close - today[open_col])
+    else:
+        # No suitable columns, return neutral
+        return 50, "🔒 אין נתוני high/low או open לחישוב טווח MES"
+
+    # Score based on daily change
     if delta > 1:
         trend_score = 90
     elif delta > 0.3:
@@ -51,7 +90,7 @@ def calculate_mes_score(df: pd.DataFrame) -> tuple[int, str]:
     else:
         trend_score = 15
 
-    # ניקוד לפי טווח
+    # Score based on price range
     if price_range > 20:
         range_score = 90
     elif price_range > 10:
@@ -61,7 +100,7 @@ def calculate_mes_score(df: pd.DataFrame) -> tuple[int, str]:
     else:
         range_score = 30
 
-    # שקלול
+    # Weighted average: trend contributes 70%, range contributes 30%
     final_score = round(trend_score * 0.7 + range_score * 0.3)
 
     explanation = (
