@@ -1,0 +1,44 @@
+rss_feeds:
+  sentiment:
+    - https://feeds.content.dowjones.io/public/rss/mw_topstories
+    - https://feeds.content.dowjones.io/public/rss/mw_realtimeheadlines
+    - https://feeds.content.dowjones.io/public/rss/mw_marketpulse
+    - https://www.nasdaq.com/feed/nasdaq-original/rss.xml
+    - https://www.nasdaq.com/feed/rssoutbound?category=Investing%20Ideas
+    - https://www.nasdaq.com/feed/rssoutbound?category=Commodities
+    - https://www.nasdaq.com/feed/rssoutbound?category=Economy
+    - https://seekingalpha.com/feed.xml
+    - https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20409666   # CNBC Trader Talk
+    - https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20398120   # CNBC Market Insider
+    - https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114   # CNBC Top News
+    - https://cointelegraph.com/rss/tag/regulation # Cointelegraph Regulation
+
+  macro:
+    - https://www.bls.gov/feeds/news.release.cpi.rss
+    - https://www.bls.gov/feeds/news.release.ppi.rss
+    - https://www.bls.gov/feeds/news.release.empsit.rss
+    - https://www.bls.gov/feeds/news.release.jolts.rss
+    - https://www.bls.gov/feed/news.rss
+    - https://www.federalreserve.gov/feeds/press_monetary.xml
+    - https://www.federalreserve.gov/feeds/press_all.xml
+    - https://www.federalreserve.gov/feeds/speeches.xml
+    - https://www.federalreserve.gov/feeds/testimony.xml
+    - https://www.myfxbook.com/calendar_statement.xml?30&type=cal&bubble=true&token=r8prbjmnv6q31isn8g37&calPeriod=16&start=&end=&tabType=0
+    - https://feeds.feedburner.com/EconomicEventsInterestRates
+
+  bonds_dxy:
+    - https://www.federalreserve.gov/feeds/data/H10_H10.XML   # כולל US10Y ו־DXY
+    - https://www.investing.com/rss/news_25.rss              # כולל תוכן על אג"ח ודולר
+
+  sectors:
+    - https://www.nasdaq.com/feed/rssoutbound?category=Technology
+    - https://www.nasdaq.com/feed/rssoutbound?category=Health%20Care
+    - https://www.nasdaq.com/feed/rssoutbound?category=Financial
+    - https://www.nasdaq.com/feed/rssoutbound?category=Energy
+    - https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=19854910   # CNBC Technology
+    - https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664   # CNBC Finance
+
+  futures_vix:
+    - https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=48227449   # CNBC Futures Now
+    - https://www.investing.com/rss/news_25.rss  # VIX, תנודתיות, דוחות פחד
+

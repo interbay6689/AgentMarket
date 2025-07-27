@@ -1,0 +1,445 @@
+[2025-07-07 18:21:57] === Starting Full System Run ===
+[2025-07-07 18:30:31] === Starting Full System Run ===
+[2025-07-07 18:30:31] Running: data_sources/fetch_news_rss.py
+[2025-07-07 18:30:36] Completed: data_sources/fetch_news_rss.py
+
+[2025-07-07 18:30:36] Running: data_sources/fetch_macro_data.py
+[2025-07-07 18:30:37] Completed: data_sources/fetch_macro_data.py
+
+[2025-07-07 18:30:37] Running: data_sources/fetch_bonds_data.py
+[2025-07-07 18:30:37] Completed: data_sources/fetch_bonds_data.py
+
+[2025-07-07 18:30:37] Running: data_sources/fetch_sector_data.py
+[2025-07-07 18:30:38] Completed: data_sources/fetch_sector_data.py
+
+[2025-07-07 18:30:38] Running: data_sources/fetch_vix_dxy.py
+[2025-07-07 18:30:38] Completed: data_sources/fetch_vix_dxy.py
+
+[2025-07-07 18:30:38] Running: data_sources/fetch_mes_data.py
+[2025-07-07 18:30:39] Completed: data_sources/fetch_mes_data.py
+
+[2025-07-07 18:30:39] Running: cat_scores/sentiment_score.py
+[2025-07-07 18:30:39] Completed: cat_scores/sentiment_score.py
+
+[2025-07-07 18:30:39] Running: cat_scores/macro_score.py
+[2025-07-07 18:30:44] Completed: cat_scores/macro_score.py
+
+[2025-07-07 18:30:44] Running: cat_scores/bonds_score.py
+[2025-07-07 18:30:56] Completed: cat_scores/bonds_score.py
+
+[2025-07-07 18:30:56] Running: cat_scores/sectors_score.py
+[2025-07-07 18:30:59] Completed: cat_scores/sectors_score.py
+
+[2025-07-07 18:30:59] Running: cat_scores/futures_vix_score.py
+[2025-07-07 18:31:00] Completed: cat_scores/futures_vix_score.py
+
+[2025-07-07 18:31:00] Running: cat_scores/mes_score.py
+[2025-07-07 18:31:01] Completed: cat_scores/mes_score.py
+
+[2025-07-07 18:31:01] Running: cat_scores/final_score.py
+[2025-07-07 18:31:28] Completed: cat_scores/final_score.py
+
+[2025-07-07 18:31:28] Running: ml_model/merge_scores_mes.py
+[2025-07-07 18:31:28] Completed: ml_model/merge_scores_mes.py
+
+[2025-07-07 18:31:28] === System Run Completed ===
+
+[2025-07-07 18:38:57] === Starting Full System Run ===
+[2025-07-07 18:38:57] Running: data_sources/fetch_news_rss.py
+[2025-07-07 18:39:01] Completed: data_sources/fetch_news_rss.py
+
+[2025-07-07 18:39:01] Running: data_sources/fetch_macro_data.py
+[2025-07-07 18:39:02] Completed: data_sources/fetch_macro_data.py
+
+[2025-07-07 18:39:02] Running: data_sources/fetch_bonds_data.py
+[2025-07-07 18:39:02] Completed: data_sources/fetch_bonds_data.py
+
+[2025-07-07 18:39:02] Running: data_sources/fetch_sector_data.py
+[2025-07-07 18:39:03] Completed: data_sources/fetch_sector_data.py
+
+[2025-07-07 18:39:03] Running: data_sources/fetch_vix_dxy.py
+[2025-07-07 18:39:03] Completed: data_sources/fetch_vix_dxy.py
+
+[2025-07-07 18:39:03] Running: data_sources/fetch_mes_data.py
+[2025-07-07 18:39:04] Completed: data_sources/fetch_mes_data.py
+
+[2025-07-07 18:39:04] Running: cat_scores/sentiment_score.py
+[2025-07-07 18:39:04] Completed: cat_scores/sentiment_score.py
+
+[2025-07-07 18:39:04] Running: cat_scores/macro_score.py
+[2025-07-07 18:39:09] Completed: cat_scores/macro_score.py
+
+[2025-07-07 18:39:09] Running: cat_scores/bonds_score.py
+[2025-07-07 18:39:20] Completed: cat_scores/bonds_score.py
+
+[2025-07-07 18:39:20] Running: cat_scores/sectors_score.py
+[2025-07-07 18:39:23] Completed: cat_scores/sectors_score.py
+
+[2025-07-07 18:39:23] Running: cat_scores/futures_vix_score.py
+[2025-07-07 18:39:24] Completed: cat_scores/futures_vix_score.py
+
+[2025-07-07 18:39:24] Running: cat_scores/mes_score.py
+[2025-07-07 18:39:25] Completed: cat_scores/mes_score.py
+
+[2025-07-07 18:39:25] Running: cat_scores/final_score.py
+[2025-07-07 18:39:40] Completed: cat_scores/final_score.py
+
+[2025-07-07 18:39:40] Running: ml_model/merge_scores_mes.py
+[2025-07-07 18:39:41] Completed: ml_model/merge_scores_mes.py
+
+[2025-07-07 18:39:41] === System Run Completed ===
+
+[2025-07-07 18:57:54] === Starting Full System Run ===
+[2025-07-07 18:57:54] Running: data_sources/fetch_news_rss.py
+[2025-07-07 18:58:00] Completed: data_sources/fetch_news_rss.py
+
+[2025-07-07 18:58:00] Running: data_sources/fetch_macro_data.py
+[2025-07-07 18:58:01] Completed: data_sources/fetch_macro_data.py
+
+[2025-07-07 18:58:01] Running: data_sources/fetch_bonds_data.py
+[2025-07-07 18:58:02] Completed: data_sources/fetch_bonds_data.py
+
+[2025-07-07 18:58:02] Running: data_sources/fetch_sector_data.py
+[2025-07-07 18:58:02] Completed: data_sources/fetch_sector_data.py
+
+[2025-07-07 18:58:02] Running: data_sources/fetch_vix_dxy.py
+[2025-07-07 18:58:03] Completed: data_sources/fetch_vix_dxy.py
+
+[2025-07-07 18:58:03] Running: data_sources/fetch_mes_data.py
+[2025-07-07 18:58:04] Completed: data_sources/fetch_mes_data.py
+
+[2025-07-07 18:58:04] Running: cat_scores/sentiment_score.py
+[2025-07-07 18:58:05] Completed: cat_scores/sentiment_score.py
+
+[2025-07-07 18:58:05] Running: cat_scores/macro_score.py
+[2025-07-07 18:58:11] Completed: cat_scores/macro_score.py
+
+[2025-07-07 18:58:11] Running: cat_scores/bonds_score.py
+[2025-07-07 18:58:22] Completed: cat_scores/bonds_score.py
+
+[2025-07-07 18:58:22] Running: cat_scores/sectors_score.py
+[2025-07-07 18:58:26] Completed: cat_scores/sectors_score.py
+
+[2025-07-07 18:58:26] Running: cat_scores/futures_vix_score.py
+[2025-07-07 18:58:28] Completed: cat_scores/futures_vix_score.py
+
+[2025-07-07 18:58:28] Running: cat_scores/mes_score.py
+[2025-07-07 18:58:29] Completed: cat_scores/mes_score.py
+
+[2025-07-07 18:58:29] Running: cat_scores/final_score.py
+[2025-07-07 18:58:48] Completed: cat_scores/final_score.py
+
+[2025-07-07 18:58:48] Running: ml_model/merge_scores_mes.py
+[2025-07-07 18:58:49] Completed: ml_model/merge_scores_mes.py
+
+[2025-07-07 18:58:49] === System Run Completed ===
+
+[2025-07-07 19:55:10] === Starting Full System Run ===
+[2025-07-07 19:55:10] Running: data_sources/fetch_news_rss.py
+[2025-07-07 19:55:16] Completed: data_sources/fetch_news_rss.py
+
+[2025-07-07 19:55:16] Running: data_sources/fetch_macro_data.py
+[2025-07-07 19:55:16] Completed: data_sources/fetch_macro_data.py
+
+[2025-07-07 19:55:16] Running: data_sources/fetch_bonds_data.py
+[2025-07-07 19:55:17] Completed: data_sources/fetch_bonds_data.py
+
+[2025-07-07 19:55:17] Running: data_sources/fetch_sector_data.py
+[2025-07-07 19:55:18] Completed: data_sources/fetch_sector_data.py
+
+[2025-07-07 19:55:18] Running: data_sources/fetch_vix_dxy.py
+[2025-07-07 19:55:18] Completed: data_sources/fetch_vix_dxy.py
+
+[2025-07-07 19:55:18] Running: data_sources/fetch_mes_data.py
+[2025-07-07 19:55:19] Completed: data_sources/fetch_mes_data.py
+
+[2025-07-07 19:55:19] Running: cat_scores/sentiment_score.py
+[2025-07-07 19:55:21] Completed: cat_scores/sentiment_score.py
+
+[2025-07-07 19:55:21] Running: cat_scores/macro_score.py
+[2025-07-07 19:55:26] Completed: cat_scores/macro_score.py
+
+[2025-07-07 19:55:26] Running: cat_scores/bonds_score.py
+[2025-07-07 19:55:37] Completed: cat_scores/bonds_score.py
+
+[2025-07-07 19:55:37] Running: cat_scores/sectors_score.py
+[2025-07-07 19:55:41] Completed: cat_scores/sectors_score.py
+
+[2025-07-07 19:55:41] Running: cat_scores/futures_vix_score.py
+[2025-07-07 19:55:43] Completed: cat_scores/futures_vix_score.py
+
+[2025-07-07 19:55:43] Running: cat_scores/mes_score.py
+[2025-07-07 19:55:45] Completed: cat_scores/mes_score.py
+
+[2025-07-07 19:55:45] Running: cat_scores/final_score.py
+[2025-07-07 19:56:01] Completed: cat_scores/final_score.py
+
+[2025-07-07 19:56:01] Running: ml_model/merge_scores_mes.py
+[2025-07-07 19:56:01] Completed: ml_model/merge_scores_mes.py
+
+[2025-07-07 19:56:01] Running: ml_model/train_model.py
+[2025-07-07 19:56:06] Completed: ml_model/train_model.py
+
+[2025-07-07 19:56:07] 🤖 ML Forecast: ❌ SHORT
+[2025-07-07 19:56:07] === System Run Completed ===
+
+[2025-07-07 20:05:26] === Starting Full System Run ===
+[2025-07-07 20:05:26] Running: data_sources/fetch_news_rss.py
+[2025-07-07 20:05:32] Completed: data_sources/fetch_news_rss.py
+
+[2025-07-07 20:05:32] Running: data_sources/fetch_macro_data.py
+[2025-07-07 20:05:33] Completed: data_sources/fetch_macro_data.py
+
+[2025-07-07 20:05:33] Running: data_sources/fetch_bonds_data.py
+[2025-07-07 20:05:34] Completed: data_sources/fetch_bonds_data.py
+
+[2025-07-07 20:05:34] Running: data_sources/fetch_sector_data.py
+[2025-07-07 20:05:34] Completed: data_sources/fetch_sector_data.py
+
+[2025-07-07 20:05:34] Running: data_sources/fetch_vix_dxy.py
+[2025-07-07 20:05:35] Completed: data_sources/fetch_vix_dxy.py
+
+[2025-07-07 20:05:35] Running: data_sources/fetch_mes_data.py
+[2025-07-07 20:05:36] Completed: data_sources/fetch_mes_data.py
+
+[2025-07-07 20:05:36] Running: cat_scores/sentiment_score.py
+[2025-07-07 20:05:37] Completed: cat_scores/sentiment_score.py
+
+[2025-07-07 20:05:37] Running: cat_scores/macro_score.py
+[2025-07-07 20:05:42] Completed: cat_scores/macro_score.py
+
+[2025-07-07 20:05:42] Running: cat_scores/bonds_score.py
+[2025-07-07 20:05:52] Completed: cat_scores/bonds_score.py
+
+[2025-07-07 20:05:52] Running: cat_scores/sectors_score.py
+[2025-07-07 20:05:56] Completed: cat_scores/sectors_score.py
+
+[2025-07-07 20:05:56] Running: cat_scores/futures_vix_score.py
+[2025-07-07 20:05:57] Completed: cat_scores/futures_vix_score.py
+
+[2025-07-07 20:05:57] Running: cat_scores/mes_score.py
+[2025-07-07 20:05:59] Completed: cat_scores/mes_score.py
+
+[2025-07-07 20:05:59] Running: cat_scores/final_score.py
+[2025-07-07 20:06:26] Completed: cat_scores/final_score.py
+
+[2025-07-07 20:06:26] Running: ml_model/merge_scores_mes.py
+[2025-07-07 20:06:27] Completed: ml_model/merge_scores_mes.py
+
+[2025-07-07 20:06:27] Running: ml_model/train_model.py
+[2025-07-07 20:06:31] Completed: ml_model/train_model.py
+
+[2025-07-07 20:06:31] Running: ml_model/performance_tracker.py
+[2025-07-07 20:06:33] Failed: ml_model/performance_tracker.py with error: Command '['python', 'ml_model/performance_tracker.py']' returned non-zero exit status 1.
+
+[2025-07-07 20:06:34] 🤖 ML Forecast: ❌ SHORT
+[2025-07-07 20:06:34] === System Run Completed ===
+
+[2025-07-07 20:12:30] === Starting Full System Run ===
+[2025-07-07 20:12:30] Running: data_sources/fetch_news_rss.py
+[2025-07-07 20:12:35] Completed: data_sources/fetch_news_rss.py
+
+[2025-07-07 20:12:35] Running: data_sources/fetch_macro_data.py
+[2025-07-07 20:12:36] Completed: data_sources/fetch_macro_data.py
+
+[2025-07-07 20:12:36] Running: data_sources/fetch_bonds_data.py
+[2025-07-07 20:12:37] Completed: data_sources/fetch_bonds_data.py
+
+[2025-07-07 20:12:37] Running: data_sources/fetch_sector_data.py
+[2025-07-07 20:12:37] Completed: data_sources/fetch_sector_data.py
+
+[2025-07-07 20:12:37] Running: data_sources/fetch_vix_dxy.py
+[2025-07-07 20:12:38] Completed: data_sources/fetch_vix_dxy.py
+
+[2025-07-07 20:12:38] Running: data_sources/fetch_mes_data.py
+[2025-07-07 20:12:39] Completed: data_sources/fetch_mes_data.py
+
+[2025-07-07 20:12:39] Running: cat_scores/sentiment_score.py
+[2025-07-07 20:12:40] Completed: cat_scores/sentiment_score.py
+
+[2025-07-07 20:12:40] Running: cat_scores/macro_score.py
+[2025-07-07 20:12:45] Completed: cat_scores/macro_score.py
+
+[2025-07-07 20:12:45] Running: cat_scores/bonds_score.py
+[2025-07-07 20:12:56] Completed: cat_scores/bonds_score.py
+
+[2025-07-07 20:12:56] Running: cat_scores/sectors_score.py
+[2025-07-07 20:12:59] Completed: cat_scores/sectors_score.py
+
+[2025-07-07 20:12:59] Running: cat_scores/futures_vix_score.py
+[2025-07-07 20:13:01] Completed: cat_scores/futures_vix_score.py
+
+[2025-07-07 20:13:01] Running: cat_scores/mes_score.py
+[2025-07-07 20:13:02] Completed: cat_scores/mes_score.py
+
+[2025-07-07 20:13:02] Running: cat_scores/final_score.py
+[2025-07-07 20:13:20] Completed: cat_scores/final_score.py
+
+[2025-07-07 20:13:20] Running: ml_model/merge_scores_mes.py
+[2025-07-07 20:13:20] Completed: ml_model/merge_scores_mes.py
+
+[2025-07-07 20:13:20] Running: ml_model/train_model.py
+[2025-07-07 20:13:22] Completed: ml_model/train_model.py
+
+[2025-07-07 20:13:22] Running: ml_model/performance_tracker.py
+[2025-07-07 20:13:24] Completed: ml_model/performance_tracker.py
+
+[2025-07-07 20:13:25] 🤖 ML Forecast: ❌ SHORT
+[2025-07-07 20:13:25] === System Run Completed ===
+
+[2025-07-07 20:53:08] === Starting Full System Run ===
+[2025-07-07 20:53:08] Running: data_sources/fetch_news_rss.py
+[2025-07-07 20:53:11] Completed: data_sources/fetch_news_rss.py
+
+[2025-07-07 20:53:11] Running: data_sources/fetch_macro_data.py
+[2025-07-07 20:53:12] Completed: data_sources/fetch_macro_data.py
+
+[2025-07-07 20:53:12] Running: data_sources/fetch_bonds_data.py
+[2025-07-07 20:53:12] Completed: data_sources/fetch_bonds_data.py
+
+[2025-07-07 20:53:12] Running: data_sources/fetch_sector_data.py
+[2025-07-07 20:53:13] Completed: data_sources/fetch_sector_data.py
+
+[2025-07-07 20:53:13] Running: data_sources/fetch_vix_dxy.py
+[2025-07-07 20:53:13] Completed: data_sources/fetch_vix_dxy.py
+
+[2025-07-07 20:53:13] Running: data_sources/fetch_mes_data.py
+[2025-07-07 20:53:14] Completed: data_sources/fetch_mes_data.py
+
+[2025-07-07 20:53:14] Running: cat_scores/sentiment_score.py
+[2025-07-07 20:53:14] Completed: cat_scores/sentiment_score.py
+
+[2025-07-07 20:53:14] Running: cat_scores/macro_score.py
+[2025-07-07 20:53:19] Completed: cat_scores/macro_score.py
+
+[2025-07-07 20:53:19] Running: cat_scores/bonds_score.py
+[2025-07-07 20:53:28] Completed: cat_scores/bonds_score.py
+
+[2025-07-07 20:53:28] Running: cat_scores/sectors_score.py
+[2025-07-07 20:53:31] Completed: cat_scores/sectors_score.py
+
+[2025-07-07 20:53:31] Running: cat_scores/futures_vix_score.py
+[2025-07-07 20:53:32] Completed: cat_scores/futures_vix_score.py
+
+[2025-07-07 20:53:32] Running: cat_scores/mes_score.py
+[2025-07-07 20:53:33] Completed: cat_scores/mes_score.py
+
+[2025-07-07 20:53:33] Running: cat_scores/final_score.py
+[2025-07-07 20:53:51] Completed: cat_scores/final_score.py
+
+[2025-07-07 20:53:51] Running: ml_model/merge_scores_mes.py
+[2025-07-07 20:53:51] Completed: ml_model/merge_scores_mes.py
+
+[2025-07-07 20:53:51] Running: ml_model/train_model.py
+[2025-07-07 20:53:54] Completed: ml_model/train_model.py
+
+[2025-07-07 20:53:54] Running: ml_model/performance_tracker.py
+[2025-07-07 20:53:55] Completed: ml_model/performance_tracker.py
+
+[2025-07-07 20:53:56] 🤖 ML Forecast: ❌ SHORT
+[2025-07-07 20:53:56] === System Run Completed ===
+
+[2025-07-08 02:12:33] === Starting Full System Run ===
+[2025-07-08 02:12:33] Running: data_sources/fetch_news_rss.py
+[2025-07-08 02:12:41] Completed: data_sources/fetch_news_rss.py
+
+[2025-07-08 02:12:41] Running: data_sources/fetch_macro_data.py
+[2025-07-08 02:12:41] Completed: data_sources/fetch_macro_data.py
+
+[2025-07-08 02:12:41] Running: data_sources/fetch_bonds_data.py
+[2025-07-08 02:12:42] Completed: data_sources/fetch_bonds_data.py
+
+[2025-07-08 02:12:42] Running: data_sources/fetch_sector_data.py
+[2025-07-08 02:12:42] Completed: data_sources/fetch_sector_data.py
+
+[2025-07-08 02:12:42] Running: data_sources/fetch_vix_dxy.py
+[2025-07-08 02:12:43] Completed: data_sources/fetch_vix_dxy.py
+
+[2025-07-08 02:12:43] Running: data_sources/fetch_mes_data.py
+[2025-07-08 02:12:43] Completed: data_sources/fetch_mes_data.py
+
+[2025-07-08 02:12:43] Running: cat_scores/sentiment_score.py
+[2025-07-08 02:12:44] Completed: cat_scores/sentiment_score.py
+
+[2025-07-08 02:12:44] Running: cat_scores/macro_score.py
+[2025-07-08 02:12:48] Completed: cat_scores/macro_score.py
+
+[2025-07-08 02:12:48] Running: cat_scores/bonds_score.py
+[2025-07-08 02:13:00] Completed: cat_scores/bonds_score.py
+
+[2025-07-08 02:13:00] Running: cat_scores/sectors_score.py
+[2025-07-08 02:13:02] Completed: cat_scores/sectors_score.py
+
+[2025-07-08 02:13:02] Running: cat_scores/futures_vix_score.py
+[2025-07-08 02:13:04] Completed: cat_scores/futures_vix_score.py
+
+[2025-07-08 02:13:04] Running: cat_scores/mes_score.py
+[2025-07-08 02:13:05] Completed: cat_scores/mes_score.py
+
+[2025-07-08 02:13:05] Running: cat_scores/final_score.py
+[2025-07-08 02:13:23] Completed: cat_scores/final_score.py
+
+[2025-07-08 02:13:23] Running: ml_model/merge_scores_mes.py
+[2025-07-08 02:13:23] Completed: ml_model/merge_scores_mes.py
+
+[2025-07-08 02:13:23] Running: ml_model/train_model.py
+[2025-07-08 02:13:26] Completed: ml_model/train_model.py
+
+[2025-07-08 02:13:26] Running: ml_model/performance_tracker.py
+[2025-07-08 02:13:27] Completed: ml_model/performance_tracker.py
+
+[2025-07-08 02:13:28] 🤖 ML Forecast: ❌ SHORT
+[2025-07-08 02:13:28] === System Run Completed ===
+
+[2025-07-08 17:07:18] === Starting Full System Run ===
+[2025-07-08 17:07:18] Running: data_sources/fetch_news_rss.py
+[2025-07-08 17:07:27] Completed: data_sources/fetch_news_rss.py
+
+[2025-07-08 17:07:27] Running: data_sources/fetch_macro_data.py
+[2025-07-08 17:07:27] Completed: data_sources/fetch_macro_data.py
+
+[2025-07-08 17:07:27] Running: data_sources/fetch_bonds_data.py
+[2025-07-08 17:07:28] Completed: data_sources/fetch_bonds_data.py
+
+[2025-07-08 17:07:28] Running: data_sources/fetch_sector_data.py
+[2025-07-08 17:07:28] Completed: data_sources/fetch_sector_data.py
+
+[2025-07-08 17:07:28] Running: data_sources/fetch_vix_dxy.py
+[2025-07-08 17:07:29] Completed: data_sources/fetch_vix_dxy.py
+
+[2025-07-08 17:07:29] Running: data_sources/fetch_mes_data.py
+[2025-07-08 17:07:30] Completed: data_sources/fetch_mes_data.py
+
+[2025-07-08 17:07:30] Running: cat_scores/sentiment_score.py
+[2025-07-08 17:07:30] Completed: cat_scores/sentiment_score.py
+
+[2025-07-08 17:07:30] Running: cat_scores/macro_score.py
+[2025-07-08 17:07:35] Completed: cat_scores/macro_score.py
+
+[2025-07-08 17:07:35] Running: cat_scores/bonds_score.py
+[2025-07-08 17:07:46] Completed: cat_scores/bonds_score.py
+
+[2025-07-08 17:07:46] Running: cat_scores/sectors_score.py
+[2025-07-08 17:07:49] Completed: cat_scores/sectors_score.py
+
+[2025-07-08 17:07:49] Running: cat_scores/futures_vix_score.py
+[2025-07-08 17:08:12] Completed: cat_scores/futures_vix_score.py
+
+[2025-07-08 17:08:12] Running: cat_scores/mes_score.py
+[2025-07-08 17:08:13] Completed: cat_scores/mes_score.py
+
+[2025-07-08 17:08:13] Running: cat_scores/final_score.py
+[2025-07-08 17:08:31] Completed: cat_scores/final_score.py
+
+[2025-07-08 17:08:31] Running: ml_model/merge_scores_mes.py
+[2025-07-08 17:08:32] Completed: ml_model/merge_scores_mes.py
+
+[2025-07-08 17:08:32] Running: ml_model/train_model.py
+[2025-07-08 17:08:34] Completed: ml_model/train_model.py
+
+[2025-07-08 17:08:34] Running: ml_model/performance_tracker.py
+[2025-07-08 17:08:35] Completed: ml_model/performance_tracker.py
+
+[2025-07-08 17:08:37] 🤖 ML Forecast: ❌ SHORT
+[2025-07-08 17:08:37] === System Run Completed ===
+

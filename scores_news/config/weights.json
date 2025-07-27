@@ -1,0 +1,8 @@
+{
+  "sentiment": 0.2,
+  "macro": 0.2,
+  "bonds": 0.15,
+  "futures_vix": 0.15,
+  "sectors": 0.15,
+  "mes": 0.15
+}

@@ -1,0 +1,19 @@
+thresholds:
+  # Yield‐inversion: נזהה inversion מובהק (day-over-day) של יותר מ־2%
+  yield_inversion: 2.0
+  # VIX Spike: נזהה עלייה חדה (intraday) של יותר מ־12%
+  vix_spike:    12.0
+
+weights:
+  # משקלות פר־קטגוריה (יחסית למשקל סופי):
+  bonds:     0.10   # אג"ח – אות לטווח הרחוק, פחות רגיש ליום-יומי
+  macro:     0.15   # מאקרו – נתוני היום (CPI, PPI, תעסוקה) משפיעים מיד
+  sentiment: 0.30   # סנטימנט חדשות – עוצמתי באלגוריתם intraday
+  vix:       0.15   # וי־איי־אקס – תנודתיות מיידית בשווקים
+  sectors:   0.05   # ביצועי סקטורים – אות משלים ובראשית
+  mes:       0.25   # MES flow – Order-flow ווליום מראים לחץ שוק מיידי
+
+rss_list:
+  - https://feeds.content.dowjones.io/public/rss/mw_topstories
+  - https://www.bloomberg.com/markets/rss
+  - https://www.investing.com/rss/news.rss
