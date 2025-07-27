@@ -24,7 +24,10 @@ def load_sentiment_data(date: str | None = None) -> pd.DataFrame:
         date = datetime.datetime.now().strftime("%Y-%m-%d")
     path = LOG_DIR / f"sentiment_raw_{date}.csv"
     if not path.exists():
-        raise FileNotFoundError(f"⚠️ קובץ sentiment לא נמצא: {path}")
+        # במקום להרים חריגה ולהפיל את התהליך כולו, נחזיר DataFrame ריק ונדפיס אזהרה.
+        # פונקציית calculate_sentiment_score יודעת להחזיר ציון ברירת מחדל כאשר אין נתונים.
+        print(f"⚠️ קובץ sentiment לא נמצא: {path}")
+        return pd.DataFrame()
     return pd.read_csv(path)
 
 def calculate_sentiment_score(df: pd.DataFrame) -> tuple[int, str]:
