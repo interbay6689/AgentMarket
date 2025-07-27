@@ -3,10 +3,16 @@ import json
 from pathlib import Path
 from datetime import datetime
 
-# נתיבים
-merged_path = Path(r"C:\Users\inter\PycharmProjects\FuturesMarketAI\scores_news\ml_model\merged_scores_mes.csv")
-log_path = Path(r"C:\Users\inter\PycharmProjects\FuturesMarketAI\scores_news\ml_model\ml_performance_log.csv")
-weights_path = Path(r"C:\Users\inter\PycharmProjects\FuturesMarketAI\scores_news\config\weights.json")
+# ---------------------------------------------------------------
+# נתיב בסיס - מחושב דינמית על בסיס מיקום הקובץ הנוכחי
+# parents[2] מחזיר את תיקיית הפרויקט (AgentMarket-main) משום שהקובץ נמצא בתיקיה
+# scores_news/ml_model/.
+BASE_DIR = Path(__file__).resolve().parents[2]
+
+# נתיבים יחסיים
+merged_path = BASE_DIR / "scores_news" / "ml_model" / "merged_scores_mes.csv"
+log_path = BASE_DIR / "scores_news" / "ml_model" / "ml_performance_log.csv"
+weights_path = BASE_DIR / "scores_news" / "config" / "weights.json"
 
 # קריאת נתונים
 df_merged = pd.read_csv(merged_path)
@@ -67,7 +73,7 @@ print(norm_weights)
 
 
 # === עדכון היסטוריית משקלים ===
-history_path = Path(r"C:\Users\inter\PycharmProjects\FuturesMarketAI\scores_news\ml_model\weights_history.csv")
+history_path = BASE_DIR / "scores_news" / "ml_model" / "weights_history.csv"
 weights_row = {"date": today}
 weights_row.update(norm_weights)
 
