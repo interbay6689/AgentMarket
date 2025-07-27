@@ -1,10 +1,25 @@
 # final_score.py
 
 from datetime import datetime
-from scores_news.cat_scores.sentiment_score import load_sentiment_data, calculate_sentiment_score
-from scores_news.cat_scores.macro_score import fetch_macro_news, calculate_macro_score
-from scores_news.cat_scores.bonds_score import fetch_treasury_yield_xml, extract_yields_from_treasury_xml, calculate_bond_score
-from scores_news.cat_scores.futures_vix_score import fetch_futures_news, calculate_futures_score
+from pathlib import Path
+
+from scores_news.cat_scores.sentiment_score import (
+    load_sentiment_data,
+    calculate_sentiment_score,
+)
+from scores_news.cat_scores.macro_score import (
+    fetch_macro_news,
+    calculate_macro_score,
+)
+from scores_news.cat_scores.bonds_score import (
+    fetch_treasury_yield_xml,
+    extract_yields_from_treasury_xml,
+    calculate_bond_score,
+)
+from scores_news.cat_scores.futures_vix_score import (
+    fetch_futures_news,
+    calculate_futures_score,
+)
 from scores_news.cat_scores.mes_score import fetch_mes_data, calculate_mes_score
 from scores_news.cat_scores.sectors_score import calculate_sectors_score
 import pandas as pd
@@ -12,11 +27,30 @@ import csv
 import json
 import os
 
-def load_mes_local_data():
-    path = r"/AgentMarket/scores_news/config/MES_data.csv"
-    df = pd.read_csv(path)
+# ---------------------------------------------------------------
+# נתיב בסיס - מחושב דינמית על בסיס מיקום הקובץ הנוכחי
+# מאפשר להריץ את המערכת בכל סביבה ללא תלות בנתיבים אבסולוטיים.
+# parents[2] מחזיר את תיקיית הפרויקט (AgentMarket-main) משום שהקובץ נמצא בתיקיה
+# scores_news/cat_scores/.
+BASE_DIR = Path(__file__).resolve().parents[2]
+
+# Paths to data/config files relative to project root
+CONFIG_DIR = BASE_DIR / "scores_news" / "config"
+ML_MODEL_DIR = BASE_DIR / "scores_news" / "ml_model"
+
+
+def load_mes_local_data() -> pd.DataFrame:
+    """טוען נתוני MES מקובץ CSV תחת תיקיית config.
+
+    משתמש בנתיב יחסי המוגדר ב-CONFIG_DIR וכך מאפשר ניידות בין סביבות.
+    """
+    mes_path = CONFIG_DIR / "MES_data.csv"
+    if not mes_path.exists():
+        raise FileNotFoundError(f"MES_data.csv לא נמצא בנתיב {mes_path}")
+    df = pd.read_csv(mes_path)
+    # Normalize column names and parse date
     df.columns = [col.strip().lower() for col in df.columns]
-    df["date"] = pd.to_datetime(df["date"]).dt.date
+    df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.date
     return df
 
 def load_all_scores():
@@ -147,66 +181,80 @@ def load_all_scores():
     return scores
 
 
-def calculate_weighted_score(score_dict, weights_path=r"C:\Users\inter\PycharmProjects\FuturesMarketAI\scores_news\config\weights.json"):
-    """מקבל מילון עם ציונים + קובץ משקלים ומחזיר ממוצע משוקלל"""
-    with open(weights_path, "r", encoding="utf-8") as f:
-        weights = json.load(f)
+def calculate_weighted_score(score_dict: dict, weights_path: Path | None = None) -> int:
+    """מקבל מילון ציונים ומחזיר ממוצע משוקלל.
 
+    אם לא סופק נתיב חיצוני, יקרא את weights.json מתוך CONFIG_DIR.
+    """
+    # קבע נתיב ברירת מחדל למשקלים
+    path = Path(weights_path) if weights_path else CONFIG_DIR / "weights.json"
+    if not path.exists():
+        raise FileNotFoundError(f"weights.json לא נמצא בנתיב {path}")
+    with open(path, "r", encoding="utf-8") as f:
+        weights = json.load(f)
     total_weight = 0
     weighted_sum = 0
-
     for cat, weight in weights.items():
         score = score_dict.get(cat, {}).get("score", 50)
         weighted_sum += score * weight
         total_weight += weight
-
     if total_weight == 0:
-        return 50  # fallback
+        return 50
     return round(weighted_sum / total_weight)
 
-def determine_market_bias(score, thresholds_path=r"C:\Users\inter\PycharmProjects\FuturesMarketAI\scores_news\config\thresholds.json"):
-    """קובע המלצת מסחר יומית על בסיס ספים"""
-    with open(thresholds_path, "r", encoding="utf-8") as f:
+def determine_market_bias(score: int, thresholds_path: Path | None = None) -> str:
+    """קובע המלצת מסחר יומית על בסיס ספים.
+
+    אם לא סופק נתיב, יקרא את thresholds.json מתוך CONFIG_DIR.
+    """
+    path = Path(thresholds_path) if thresholds_path else CONFIG_DIR / "thresholds.json"
+    if not path.exists():
+        raise FileNotFoundError(f"thresholds.json לא נמצא בנתיב {path}")
+    with open(path, "r", encoding="utf-8") as f:
         thresholds = json.load(f)
-
-    if score >= thresholds["long"]:
+    long_threshold = thresholds.get("long", 60)
+    short_threshold = thresholds.get("short", 40)
+    if score >= long_threshold:
         return "✅ LONG"
-    elif score <= thresholds["short"]:
+    elif score <= short_threshold:
         return "❌ SHORT"
-    else:
-        return "🔒 NEUTRAL"
+    return "🔒 NEUTRAL"
 
-def save_scores_to_log(scores: dict, final_score: int, bias: str, path=r"C:\Users\inter\PycharmProjects\FuturesMarketAI\scores_news\config\score_log.csv"):
-    """שומר את תוצאות היום לקובץ score_log.csv"""
-    date = datetime.now().strftime("%Y-%m-%d")
-    row = {
-        "date": date,
+def save_scores_to_log(scores: dict, final_score: int, bias: str, path: Path | None = None) -> None:
+    """שומר את תוצאות היום לקובץ score_log.csv.
+
+    אם לא סופק נתיב, ישתמש בנתיב תחת CONFIG_DIR. יוצר את הקובץ אם אינו קיים.
+    """
+    log_path = Path(path) if path else CONFIG_DIR / "score_log.csv"
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    # הכנת שורה עם הערכים
+    row: dict[str, object] = {
+        "date": date_str,
         "final_score": final_score,
-        "bias": bias
+        "bias": bias,
     }
-
-    # הוספת ציונים של כל הקטגוריות
+    # אם חסר sectors – הוסף ברירת מחדל
+    if "sectors" not in scores:
+        scores["sectors"] = {
+            "score": 50,
+            "explanation": "נתון לא זמין – ברירת מחדל",
+        }
+    # הוספת שדות
     for cat, result in scores.items():
-        score = result.get("score")
-        if "sectors" not in scores:
-            scores["sectors"] = {
-                "score": 50,
-                "explanation": "נתון לא זמין – ברירת מחדל"
-            }
-        if cat in ["daily_change_pct", "open", "close", "direction", "long_short_ratio"]:
-            row[cat] = score  # שמירה בשם המקורי
+        score_value = result.get("score")
+        if cat in {"daily_change_pct", "open", "close", "direction", "long_short_ratio"}:
+            row[cat] = score_value
         else:
-            row[f"{cat}_score"] = score  # שאר הקטגוריות נשמרות עם _score
-
-    file_exists = os.path.exists(path)
-
-    with open(path, "a", newline="", encoding="utf-8") as f:
+            row[f"{cat}_score"] = score_value
+    # כתיבה לקובץ
+    file_exists = log_path.exists()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_path, "a", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=row.keys())
         if not file_exists:
             writer.writeheader()
         writer.writerow(row)
-
-    print(f"💾 נשמר ל־score_log.csv ({path})")
+    print(f"💾 נשמר ל־score_log.csv ({log_path})")
 
 
 

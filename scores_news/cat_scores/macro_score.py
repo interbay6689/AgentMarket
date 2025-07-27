@@ -3,14 +3,26 @@ import os
 import feedparser
 import pandas as pd
 from datetime import datetime
+from pathlib import Path
 from scores_news.cat_scores.nlp_utils import analyze_articles
 
+# ---------------------------------------------------------------
+# נתיב בסיס - משמש למציאת sources.yaml יחסית לפרויקט
+BASE_DIR = Path(__file__).resolve().parents[2]
+CONFIG_PATH = BASE_DIR / "scores_news" / "config" / "sources.yaml"
 
-def load_macro_feeds(config_path=r"C:\Users\inter\PycharmProjects\FuturesMarketAI\scores_news\config\sources.yaml"):
-    """טוען קישורי RSS של macro מתוך sources.yaml"""
-    with open(config_path, "r", encoding="utf-8") as f:
+
+def load_macro_feeds(config_path: Path | None = None) -> list:
+    """טוען קישורי RSS של macro מתוך sources.yaml.
+
+    אם לא סופק נתיב, ישתמש בנתיב יחסית תחת CONFIG_PATH.
+    """
+    path = Path(config_path) if config_path else CONFIG_PATH
+    if not path.exists():
+        raise FileNotFoundError(f"sources.yaml לא נמצא: {path}")
+    with open(path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
-    return config["rss_feeds"]["macro"]
+    return config.get("rss_feeds", {}).get("macro", [])
 
 
 def fetch_macro_news():

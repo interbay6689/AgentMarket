@@ -4,13 +4,26 @@
 import feedparser
 import yaml
 import pandas as pd
+from pathlib import Path
 from scores_news.cat_scores.nlp_utils import analyze_articles
 import yfinance as yf
 
-def load_futures_feeds(config_path=r"C:\Users\inter\PycharmProjects\FuturesMarketAI\scores_news\config\sources.yaml"):
-    with open(config_path, "r", encoding="utf-8") as f:
+# ---------------------------------------------------------------
+# נתיב בסיס למציאת sources.yaml באופן יחסי
+BASE_DIR = Path(__file__).resolve().parents[2]
+CONFIG_PATH = BASE_DIR / "scores_news" / "config" / "sources.yaml"
+
+def load_futures_feeds(config_path: Path | None = None) -> list:
+    """טוען קישורי RSS של futures/vix מתוך sources.yaml.
+
+    אם לא סופק נתיב, ישתמש בנתיב ברירת מחדל.
+    """
+    path = Path(config_path) if config_path else CONFIG_PATH
+    if not path.exists():
+        raise FileNotFoundError(f"sources.yaml לא נמצא: {path}")
+    with open(path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
-    return config["rss_feeds"]["futures_vix"]
+    return config.get("rss_feeds", {}).get("futures_vix", [])
 
 
 def fetch_futures_news():

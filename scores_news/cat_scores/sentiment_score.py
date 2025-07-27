@@ -5,15 +5,25 @@
 import os
 import pandas as pd
 import datetime
+from pathlib import Path
 from scores_news.cat_scores.nlp_utils import analyze_articles
 
+# ---------------------------------------------------------------
+# נתיב בסיס - מאפשר גישה יחסית לקבצי לוג במקום שימוש בנתיב קבוע
+# הקובץ נמצא תחת scores_news/cat_scores ולכן parents[2] מחזיר את שורש הפרויקט.
+BASE_DIR = Path(__file__).resolve().parents[2]
+LOG_DIR = BASE_DIR / "scores_news" / "logs"
 
-def load_sentiment_data(date=None):
-    """טוען את קובץ הכתבות שנשמר מהשלב הקודם"""
+
+def load_sentiment_data(date: str | None = None) -> pd.DataFrame:
+    """טוען את קובץ הכתבות שנשמר בשלב הקודם מתוך תיקיית logs.
+
+    הפרמטר `date` בפורמט YYYY-MM-DD. אם לא סופק, יטען את היום הנוכחי.
+    """
     if not date:
         date = datetime.datetime.now().strftime("%Y-%m-%d")
-    path = f"/AgentMarket/scores_news\\logs\\sentiment_raw_{date}.csv"
-    if not os.path.exists(path):
+    path = LOG_DIR / f"sentiment_raw_{date}.csv"
+    if not path.exists():
         raise FileNotFoundError(f"⚠️ קובץ sentiment לא נמצא: {path}")
     return pd.read_csv(path)
 
