@@ -254,6 +254,249 @@ def find_similar_setups(df_daily: pd.DataFrame, top_n: int = 10) -> pd.DataFrame
         return pd.DataFrame()
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Sprint 1 — Order Blocks / BOS-MSS / Opening Range
+# ─────────────────────────────────────────────────────────────────────────────
+
+def detect_swings(df: pd.DataFrame, n: int = 3):
+    """Returns (swing_highs_df, swing_lows_df) each with columns [idx, price, datetime]."""
+    highs, lows = [], []
+    for i in range(n, len(df) - n):
+        h = float(df.iloc[i]["high"])
+        l = float(df.iloc[i]["low"])
+        if all(h > float(df.iloc[i - j]["high"]) for j in range(1, n + 1)) and \
+           all(h > float(df.iloc[i + j]["high"]) for j in range(1, n + 1)):
+            highs.append({"idx": i, "price": h, "datetime": df.index[i]})
+        if all(l < float(df.iloc[i - j]["low"]) for j in range(1, n + 1)) and \
+           all(l < float(df.iloc[i + j]["low"]) for j in range(1, n + 1)):
+            lows.append({"idx": i, "price": l, "datetime": df.index[i]})
+    return (
+        pd.DataFrame(highs) if highs else pd.DataFrame(columns=["idx", "price", "datetime"]),
+        pd.DataFrame(lows)  if lows  else pd.DataFrame(columns=["idx", "price", "datetime"]),
+    )
+
+
+def detect_order_blocks(df: pd.DataFrame, min_move_factor: float = 1.5, lookback: int = 3) -> pd.DataFrame:
+    """
+    Identifies Order Blocks: the last opposing candle before a strong impulse move.
+    Bullish OB = last bearish candle before strong upward impulse.
+    Bearish OB = last bullish candle before strong downward impulse.
+    An OB is invalidated once price closes beyond it.
+    """
+    if len(df) < lookback + 3:
+        return pd.DataFrame()
+
+    avg_body = (df["close"] - df["open"]).abs().mean()
+    if avg_body == 0:
+        return pd.DataFrame()
+
+    obs = {}  # keyed by candle index to deduplicate
+
+    for i in range(1, len(df) - lookback):
+        future = df.iloc[i: i + lookback]
+        move = float(future["close"].iloc[-1]) - float(df.iloc[i - 1]["close"])
+
+        if abs(move) < avg_body * min_move_factor:
+            continue
+
+        is_bullish_impulse = move > 0
+        for j in range(i - 1, max(i - 6, -1), -1):
+            c = df.iloc[j]
+            if is_bullish_impulse and float(c["close"]) < float(c["open"]):
+                if j not in obs:
+                    obs[j] = {
+                        "type": "bullish",
+                        "idx": j,
+                        "high": float(c["high"]),
+                        "low": float(c["low"]),
+                        "body_top": float(c["open"]),
+                        "body_bottom": float(c["close"]),
+                        "datetime": df.index[j],
+                        "valid": True,
+                    }
+                break
+            elif not is_bullish_impulse and float(c["close"]) > float(c["open"]):
+                if j not in obs:
+                    obs[j] = {
+                        "type": "bearish",
+                        "idx": j,
+                        "high": float(c["high"]),
+                        "low": float(c["low"]),
+                        "body_top": float(c["close"]),
+                        "body_bottom": float(c["open"]),
+                        "datetime": df.index[j],
+                        "valid": True,
+                    }
+                break
+
+    if not obs:
+        return pd.DataFrame()
+
+    ob_df = pd.DataFrame(list(obs.values()))
+
+    # Invalidate OBs price has already closed through
+    for i, ob in ob_df.iterrows():
+        after = df.iloc[ob["idx"] + lookback:]
+        if ob["type"] == "bullish":
+            if (after["close"] < ob["low"]).any():
+                ob_df.at[i, "valid"] = False
+        else:
+            if (after["close"] > ob["high"]).any():
+                ob_df.at[i, "valid"] = False
+
+    return ob_df.sort_values("idx").reset_index(drop=True)
+
+
+def detect_market_structure(df: pd.DataFrame, swing_n: int = 3) -> pd.DataFrame:
+    """
+    Detects Break of Structure (BOS) and Market Structure Shift (MSS).
+    BOS = break in trend direction (continuation signal).
+    MSS = break against trend direction (reversal signal).
+    Returns DataFrame with columns: datetime, type, price, label.
+    """
+    if len(df) < swing_n * 4:
+        return pd.DataFrame()
+
+    sh_df, sl_df = detect_swings(df, n=swing_n)
+    if sh_df.empty or sl_df.empty:
+        return pd.DataFrame()
+
+    events = []
+    trend = "neutral"  # track: "bullish" | "bearish" | "neutral"
+
+    for i in range(swing_n + 1, len(df)):
+        close = float(df.iloc[i]["close"])
+        prev_close = float(df.iloc[i - 1]["close"])
+
+        prev_sh = sh_df[sh_df["idx"] < i]
+        prev_sl = sl_df[sl_df["idx"] < i]
+
+        if prev_sh.empty or prev_sl.empty:
+            continue
+
+        last_sh_price = float(prev_sh.iloc[-1]["price"])
+        last_sl_price = float(prev_sl.iloc[-1]["price"])
+
+        # Break above swing high
+        if prev_close <= last_sh_price < close:
+            label = "BOS ↑" if trend == "bullish" else "MSS ↑"
+            event_type = "BOS_bullish" if trend == "bullish" else "MSS_bullish"
+            events.append({
+                "datetime": df.index[i],
+                "type": event_type,
+                "price": last_sh_price,
+                "label": label,
+            })
+            trend = "bullish"
+
+        # Break below swing low
+        elif prev_close >= last_sl_price > close:
+            label = "BOS ↓" if trend == "bearish" else "MSS ↓"
+            event_type = "BOS_bearish" if trend == "bearish" else "MSS_bearish"
+            events.append({
+                "datetime": df.index[i],
+                "type": event_type,
+                "price": last_sl_price,
+                "label": label,
+            })
+            trend = "bearish"
+
+    return pd.DataFrame(events) if events else pd.DataFrame()
+
+
+def calculate_opening_range(df_5m: pd.DataFrame, minutes: int = 15) -> dict:
+    """
+    Opening Range = high/low of the first `minutes` after RTH open (09:30 ET).
+    Returns dict with or_high, or_low, or_mid, or_range, or_complete.
+    """
+    if df_5m.empty:
+        return {}
+    try:
+        col = "datetime_et" if "datetime_et" in df_5m.columns else "datetime"
+        df = df_5m.copy()
+        df["_et"] = pd.to_datetime(df[col])
+        df["_et_time"] = df["_et"].dt.strftime("%H:%M")
+
+        open_start = "09:30"
+        open_end_h = 9 + (30 + minutes) // 60
+        open_end_m = (30 + minutes) % 60
+        open_end = f"{open_end_h:02d}:{open_end_m:02d}"
+
+        or_bars = df[df["_et_time"].between(open_start, open_end)]
+        if or_bars.empty:
+            return {}
+
+        or_high = float(or_bars["high"].max())
+        or_low = float(or_bars["low"].min())
+        expected_bars = minutes // 5
+        return {
+            "or_high": or_high,
+            "or_low": or_low,
+            "or_mid": round((or_high + or_low) / 2, 2),
+            "or_range": round(or_high - or_low, 2),
+            "or_complete": len(or_bars) >= expected_bars,
+            "or_bars": len(or_bars),
+        }
+    except Exception:
+        return {}
+
+
+def classify_premium_discount(current_price: float, range_high: float, range_low: float) -> dict:
+    """
+    Classify where current price sits within a range.
+    0% = Deep Discount (buy zone), 50% = Equilibrium, 100% = Deep Premium (sell zone).
+    """
+    if range_high <= range_low or current_price is None:
+        return {"pct": 50.0, "zone": "Equilibrium", "bias": "neutral"}
+    pct = (current_price - range_low) / (range_high - range_low) * 100
+    pct = max(0.0, min(100.0, pct))
+    if pct < 25:
+        zone, bias = "Deep Discount", "bullish"
+    elif pct < 45:
+        zone, bias = "Discount", "bullish"
+    elif pct < 55:
+        zone, bias = "Equilibrium", "neutral"
+    elif pct < 75:
+        zone, bias = "Premium", "bearish"
+    else:
+        zone, bias = "Deep Premium", "bearish"
+    return {"pct": round(pct, 1), "zone": zone, "bias": bias}
+
+
+def calculate_atr_range_consumed(df_daily: pd.DataFrame, df_5m: pd.DataFrame,
+                                  atr_period: int = 14) -> dict:
+    """
+    How much of the expected daily range (ATR) has been consumed today?
+    Returns atr, today_range, consumed_pct, remaining_pts.
+    """
+    if len(df_daily) < atr_period + 1:
+        return {}
+    try:
+        d = df_daily.copy().reset_index(drop=True)
+        d["prev_close"] = d["close"].shift(1)
+        d["tr"] = (
+            pd.concat([d["high"], d["prev_close"]], axis=1).max(axis=1) -
+            pd.concat([d["low"],  d["prev_close"]], axis=1).min(axis=1)
+        )
+        atr = float(d["tr"].rolling(atr_period).mean().iloc[-1])
+
+        today_high = float(df_5m["high"].max()) if not df_5m.empty else float(d.iloc[-1]["high"])
+        today_low  = float(df_5m["low"].min())  if not df_5m.empty else float(d.iloc[-1]["low"])
+        today_range = today_high - today_low
+        consumed_pct = min(today_range / atr * 100, 100.0) if atr > 0 else 0.0
+
+        return {
+            "atr": round(atr, 1),
+            "today_range": round(today_range, 1),
+            "consumed_pct": round(consumed_pct, 1),
+            "remaining_pts": round(max(atr - today_range, 0), 1),
+            "today_high": today_high,
+            "today_low": today_low,
+        }
+    except Exception:
+        return {}
+
+
 def session_win_rates(df_hourly: pd.DataFrame) -> pd.DataFrame:
     if df_hourly.empty:
         return pd.DataFrame()
