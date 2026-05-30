@@ -1,4 +1,12 @@
 streamlit
 pandas
-pyyaml            # ל־config
-# כל ספריית HTTP/Scraping שתצטרך (requests, feedparser וכו’)
+pyyaml
+plotly>=5.0.0
+yfinance>=0.2.0
+pytz
+numpy
+scikit-learn
+joblib
+requests
+feedparser
+vaderSentiment
