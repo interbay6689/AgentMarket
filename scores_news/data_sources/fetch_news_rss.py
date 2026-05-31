@@ -2,10 +2,13 @@
 import logging
 import os
 from datetime import datetime
+from pathlib import Path
 
 import feedparser
 import pandas as pd
 import yaml
+
+_ROOT = Path(__file__).resolve().parents[2]
 
 # from utils.cache import RedisCache, fetch_url_with_cache
 from scores_news.utils.cache import RedisCache, fetch_url_with_cache
@@ -16,8 +19,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def load_sentiment_feeds(config_path=r"C:\Users\inter\PycharmProjects\FuturesMarketAI\scores_news\config\sources.yaml"):
+def load_sentiment_feeds(config_path=None):
     """טוען קישורי RSS לפי קטגוריית sentiment"""
+    if config_path is None:
+        config_path = _ROOT / "scores_news" / "config" / "sources.yaml"
     with open(config_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
     return config["rss_feeds"]["sentiment"]
@@ -81,7 +86,7 @@ def fetch_and_save_sentiment_data(date=None):
         logger.warning("⚠️ לא נמצאו כתבות. קובץ לא יישמר.")
         return
 
-    output_dir = r"/AgentMarket/scores_news/logs"
+    output_dir = str(_ROOT / "scores_news" / "logs")
     os.makedirs(output_dir, exist_ok=True)
 
     output_path = os.path.join(output_dir, f"sentiment_raw_{date}.csv")

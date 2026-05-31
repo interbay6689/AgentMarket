@@ -7,9 +7,9 @@ from pathlib import Path
 st.set_page_config(page_title="🧠 תהליך הלמידה - ML", layout="wide")
 st.title("📚 תהליך הלמידה של המודל")
 
-# נתיבים
-perf_log = Path(r"C:/Users/inter/PycharmProjects/FuturesMarketAI/scores_news/ml_model/ml_performance_log.csv")
-weights_hist = Path(r"C:/Users/inter/PycharmProjects/FuturesMarketAI/scores_news/ml_model/weights_history.csv")
+_ROOT = Path(__file__).resolve().parents[2]
+perf_log = _ROOT / "scores_news" / "ml_model" / "ml_performance_log.csv"
+weights_hist = _ROOT / "scores_news" / "ml_model" / "weights_history.csv"
 
 # === 1. גרף הצלחות יומיות ===
 st.subheader("✅ הצלחות יומיות")

@@ -2,6 +2,7 @@ import os
 import logging
 import time
 from datetime import datetime
+from pathlib import Path
 import feedparser
 from scores_news.cat_scores.nlp_utils import analyze_articles
 from scores_news.utils.cache import RedisCache
@@ -31,7 +32,8 @@ logging.getLogger().addHandler(logging.StreamHandler())  # לוגים גם למ�
 logging.info(f"📍 Writing logs to: {os.path.abspath(LOG_PATH)}")
 
 # קובץ CSV של כתבות
-CSV_PATH = r"/AgentMarket/scores_news/logs/sentiment_new.csv"
+_ROOT = Path(os.path.abspath(__file__)).parents[2]
+CSV_PATH = str(_ROOT / "scores_news" / "logs" / "sentiment_new.csv")
 
 # אתחול Redis
 cache = RedisCache()

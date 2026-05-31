@@ -2,11 +2,11 @@
 import sys
 from pathlib import Path
 
-# מוסיף את תיקיית השורש של הפרויקט לשביל החיפוש של Python
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# מוסיף את תיקיית market_dashboard לשביל החיפוש של Python
+sys.path.insert(0, str(Path(__file__).parent))
 
 import streamlit as st
-from AgentMarket.market_dashboard.pages import settings, dashboard, system_info, alerts_page, category_detail, nq_order_flow
+from pages import settings, dashboard, system_info, alerts_page, category_detail, nq_order_flow
 from pathlib import Path
 import os
 import csv
