@@ -128,9 +128,9 @@ def app():
         # השוואה ל־MES
         if mes_path.exists():
             df_mes = pd.read_csv(mes_path)
-            df_mes["Date"] = pd.to_datetime(df_mes["Date"], errors="coerce")
-            df_mes = df_mes.dropna(subset=["Date"])
-            df_mes = df_mes.rename(columns={"Date": "date"})
+            df_mes.columns = [c.lower() for c in df_mes.columns]
+            df_mes["date"] = pd.to_datetime(df_mes["date"], errors="coerce")
+            df_mes = df_mes.dropna(subset=["date"])
             df_merged = pd.merge(df, df_mes, on="date", how="left")
 
             st.markdown("### 🔁 השוואת Final Score ל־MES")
