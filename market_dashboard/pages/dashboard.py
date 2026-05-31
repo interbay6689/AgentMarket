@@ -16,11 +16,6 @@ _ROOT = Path(__file__).resolve().parents[2]
 def app():
     st.title("📊 Market Sentiment Dashboard – החלטת מסחר יומית רשמית")
 
-    # st.page_link("pages/ml_learning.py", label="🧠 תהליך הלמידה", icon="📊") # כפתור בראש הדף מתחת לכותרת
-    with st.sidebar:
-        if st.button("🧠 תהליך הלמידה"):
-            switch_page("pages/ml_learning")
-
     # === המלצה יומית ע"י מודל ML ===
     def load_ml_prediction():
         try:
