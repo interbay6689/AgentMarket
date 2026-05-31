@@ -20,6 +20,8 @@ def app():
         df_perf['date'] = pd.to_datetime(df_perf['date'])
         df_perf['success'] = df_perf['correct'].apply(lambda x: 1 if x == '✅' else 0)
         st.bar_chart(df_perf.set_index('date')['success'])
+    except FileNotFoundError:
+        st.info("📋 ml_performance_log.csv טרם נוצר — נוצר אוטומטית לאחר הרצת final_score.py לפחות יום אחד.")
     except Exception as e:
         st.error(f"שגיאה בטעינת ml_performance_log.csv: {e}")
 
@@ -29,7 +31,7 @@ def app():
         df_perf['cumulative_accuracy'] = df_perf['success'].expanding().mean() * 100
         st.line_chart(df_perf.set_index('date')['cumulative_accuracy'])
     except Exception:
-        st.warning("אין מספיק נתונים לחישוב דיוק מצטבר.")
+        st.info("אין מספיק נתונים לחישוב דיוק מצטבר.")
 
     # === 3. שינוי משקלים לאורך זמן ===
     st.subheader("🧠 שינוי משקלים - weights")
@@ -41,5 +43,7 @@ def app():
 
         st.markdown("### 🔎 טבלת משקלים אחרונה")
         st.dataframe(df_weights.tail(1).T.rename(columns={df_weights.tail(1).index[0]: "Weight"}))
+    except FileNotFoundError:
+        st.info("📋 weights_history.csv טרם נוצר — נוצר אוטומטית לאחר הרצת final_score.py לפחות יום אחד.")
     except Exception as e:
         st.error(f"שגיאה בטעינת weights_history.csv: {e}")
