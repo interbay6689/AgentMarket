@@ -2,8 +2,9 @@
 import sys
 from pathlib import Path
 
-# מוסיף את תיקיית market_dashboard לשביל החיפוש של Python
-sys.path.insert(0, str(Path(__file__).parent))
+_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(Path(__file__).parent))  # market_dashboard/ — for pages, modules
+sys.path.insert(0, str(_ROOT))                  # AgentMarket root — for scores_news
 
 import streamlit as st
 from pages import settings, dashboard, system_info, alerts_page, category_detail, nq_order_flow
