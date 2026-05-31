@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).parent))  # market_dashboard/ — for page
 sys.path.insert(0, str(_ROOT))                  # AgentMarket root — for scores_news
 
 import streamlit as st
-from pages import settings, dashboard, system_info, alerts_page, category_detail, nq_order_flow
+from pages import settings, dashboard, system_info, alerts_page, category_detail, nq_order_flow, ml_learning
 from pathlib import Path
 import os
 import csv
@@ -40,6 +40,7 @@ st.set_page_config(page_title="Market Impact Dashboard", layout="wide")
 PAGES = {
     "🏠 Dashboard": dashboard,
     "📊 NQ Order Flow": nq_order_flow,
+    "🧠 ML Learning": ml_learning,
     "🔍 Category Detail": category_detail,
     "⚠️ Alerts": alerts_page,
     "⚙️ Settings": settings,
