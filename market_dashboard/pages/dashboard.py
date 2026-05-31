@@ -126,18 +126,12 @@ def app():
         st.line_chart(df.set_index("date")[score_columns], height=250)
 
         # השוואה ל־MES
-        if mes_path.exists():
-            df_mes = pd.read_csv(mes_path)
-            df_mes.columns = [c.lower() for c in df_mes.columns]
-            df_mes["date"] = pd.to_datetime(df_mes["date"], errors="coerce")
-            df_mes = df_mes.dropna(subset=["date"])
-            df_merged = pd.merge(df, df_mes, on="date", how="left")
-
-            st.markdown("### 🔁 השוואת Final Score ל־MES")
-            df_plot = df_merged[["date", "final_score", "daily_change_pct"]].set_index("date")
-            st.line_chart(df_plot, height=250)
+        st.markdown("### 🔁 השוואת Final Score ל־MES")
+        plot_cols = [c for c in ["final_score", "daily_change_pct"] if c in df.columns]
+        if plot_cols:
+            st.line_chart(df.set_index("date")[plot_cols], height=250)
         else:
-            st.warning("📁 MES_data.csv לא נמצא")
+            st.warning("📁 אין נתוני daily_change_pct ב-score_log.csv")
 
         # Heatmap
         st.markdown("### 🌡 Heatmap ציונים אחרונים")
