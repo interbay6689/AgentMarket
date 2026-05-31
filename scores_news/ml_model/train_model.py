@@ -1,12 +1,14 @@
 import pandas as pd
 import os
+from pathlib import Path
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 import joblib
 
-MERGED_DATA_PATH = r"/AgentMarket/scores_news/ml_model/merged_scores_mes.csv"
-MODEL_PATH = r"/AgentMarket/scores_news/ml_model/model.pkl"
+_ROOT = Path(__file__).resolve().parents[2]
+MERGED_DATA_PATH = _ROOT / "scores_news" / "ml_model" / "merged_scores_mes.csv"
+MODEL_PATH = _ROOT / "scores_news" / "ml_model" / "model.pkl"
 
 def load_data():
     df = pd.read_csv(MERGED_DATA_PATH)

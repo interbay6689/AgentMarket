@@ -8,9 +8,10 @@ from sklearn.ensemble import RandomForestClassifier
 import joblib
 import matplotlib
 from datetime import datetime
-import subprocess
 
 matplotlib.use('Agg')
+
+_ROOT = Path(__file__).resolve().parents[2]
 
 def app():
     st.title("📊 Market Sentiment Dashboard – החלטת מסחר יומית רשמית")
@@ -24,11 +25,11 @@ def app():
     def load_ml_prediction():
         try:
             df = pd.read_csv(
-                r"/AgentMarket/scores_news/ml_model/merged_scores_mes.csv")
+                _ROOT / "scores_news" / "ml_model" / "merged_scores_mes.csv")
             df['date'] = pd.to_datetime(df['date'])
             latest = df.sort_values("date").iloc[-1]
 
-            model = joblib.load(r"C:\Users\inter\PycharmProjects\FuturesMarketAI\scores_news\ml_model\model.pkl")
+            model = joblib.load(_ROOT / "scores_news" / "ml_model" / "model.pkl")
             X = pd.DataFrame([[latest[col] for col in ['sentiment_score', 'macro_score', 'bonds_score',
                                                        'futures_vix_score', 'sectors_score', 'mes_score']]],
                              columns=['sentiment', 'macro', 'bonds', 'futures_vix', 'sectors', 'mes'])
@@ -42,7 +43,7 @@ def app():
     def load_model_accuracy():
         try:
             df = pd.read_csv(
-                r"/AgentMarket/scores_news/ml_model/ml_performance_log.csv")
+                _ROOT / "scores_news" / "ml_model" / "ml_performance_log.csv")
             acc = (df['correct'] == '✅').mean() * 100
             return f"{acc:.1f}% ({len(df)} ימים)"
         except:
@@ -67,8 +68,7 @@ def app():
             if current_hour >= 20:
                 try:
                     result = subprocess.run(
-                        ["python",
-                         r"C:\Users\inter\PycharmProjects\FuturesMarketAI\scores_news\ml_model\performance_tracker.py"],
+                        ["python", str(_ROOT / "scores_news" / "ml_model" / "performance_tracker.py")],
                         capture_output=True, text=True
                     )
                     st.success("📈 התחזית הושוותה בהצלחה מול התוצאה בפועל!")
@@ -78,15 +78,15 @@ def app():
             else:
                 st.warning("⏳ ניתן לבדוק הצלחת תחזית רק לאחר השעה 20:00 (שעון ישראל)")
 
-    score_path = Path(r"C:/Users/inter/PycharmProjects/FuturesMarketAI/scores_news/config/score_log.csv")
-    mes_path = Path(r"C:/Users/inter/PycharmProjects/FuturesMarketAI/scores_news/config/MES_data.csv")
+    score_path = _ROOT / "scores_news" / "config" / "score_log.csv"
+    mes_path = _ROOT / "scores_news" / "config" / "MES_data.csv"
 
     # כפתור הרצה
     with st.expander("🚀 הפעל ניתוח יומי"):
         if st.button("הרץ final_score.py"):
             try:
                 result = subprocess.run(
-                    ["python", r"C:\Users\inter\PycharmProjects\FuturesMarketAI\scores_news\cat_scores\final_score.py"],
+                    ["python", str(_ROOT / "scores_news" / "cat_scores" / "final_score.py")],
                     capture_output=True, text=True
                 )
                 st.success("✅ הרצה הסתיימה בהצלחה")

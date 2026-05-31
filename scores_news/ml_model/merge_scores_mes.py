@@ -1,11 +1,12 @@
 import pandas as pd
 import os
 from datetime import datetime
+from pathlib import Path
 
-# === Paths ===
-SCORE_LOG_PATH = r"/AgentMarket/scores_news/config/score_log.csv"
-MES_DATA_PATH = r"/AgentMarket/scores_news/config/MES_data.csv"
-MERGED_OUTPUT_PATH = r"/AgentMarket/scores_news/ml_model/merged_scores_mes.csv"
+_ROOT = Path(__file__).resolve().parents[2]
+SCORE_LOG_PATH = _ROOT / "scores_news" / "config" / "score_log.csv"
+MES_DATA_PATH = _ROOT / "scores_news" / "config" / "MES_data.csv"
+MERGED_OUTPUT_PATH = _ROOT / "scores_news" / "ml_model" / "merged_scores_mes.csv"
 
 # === Threshold להגדרת מגמה ===
 TREND_THRESHOLD = 5  # נקודות

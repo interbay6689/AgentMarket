@@ -9,12 +9,14 @@ matplotlib.use('Agg')
 def app():
     st.title("🖥️ מידע מערכת")
 
+    _ROOT = Path(__file__).resolve().parents[2]
+
     tab1, tab2, tab3 = st.tabs(["🔴 סנטימנט שלילי (NSSM)", "⚠️ התרעות מערכת", "📈 ציונים יומיים"])
 
     # === טאב 1: סנטימנט שלילי מ־NSSM ===
     with tab1:
         st.subheader("🧠 ניתוח סנטימנט שלילי מ־NSSM")
-        file_path = Path(r"C:/Users/inter/PycharmProjects/FuturesMarketAI/scores_news/logs/sentiment_new.csv")
+        file_path = _ROOT / "scores_news" / "logs" / "sentiment_new.csv"
 
         if not file_path.exists():
             st.error(f"⚠️ הקובץ sentiment_new.csv לא נמצא בנתיב:\n{file_path}")
@@ -69,7 +71,7 @@ def app():
     # === טאב 2: לוג התרעות ===
     with tab2:
         st.subheader("📢 לוג התרעות")
-        alerts_path = Path(r"C:\Users\inter\PycharmProjects\FuturesMarketAI\market_dashboard\logs\alerts_log.txt")
+        alerts_path = _ROOT / "market_dashboard" / "logs" / "alerts_log.txt"
         if alerts_path.exists():
             lines = alerts_path.read_text(encoding="utf-8").splitlines()
             for line in lines[-500:]:

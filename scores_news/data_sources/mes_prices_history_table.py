@@ -1,8 +1,11 @@
 import os
 from datetime import datetime
+from pathlib import Path
 
 import pandas as pd
 import yfinance as yf
+
+_ROOT = Path(__file__).resolve().parents[2]
 
 
 def enrich_mes_data(df):
@@ -92,7 +95,7 @@ def update_mes_csv(file_path="MES_data.csv"):
 
 # הפעלה
 if __name__ == "__main__":
-    file_path = r"/AgentMarket/scores_news/config/MES_data.csv"
+    file_path = str(_ROOT / "scores_news" / "config" / "MES_data.csv")
     if not os.path.exists(file_path):
         build_mes_csv(file_path)
     else:

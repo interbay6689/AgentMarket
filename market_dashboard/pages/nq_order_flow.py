@@ -9,9 +9,9 @@ import pytz
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from AgentMarket.market_dashboard.modules import nq_data, nq_calculations
+from modules import nq_data, nq_calculations
 
 IL_TZ = pytz.timezone("Asia/Jerusalem")
 ET_TZ = pytz.timezone("America/New_York")
