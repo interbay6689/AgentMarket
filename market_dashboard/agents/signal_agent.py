@@ -45,6 +45,9 @@ _ALLOWED_TOOLS = {
     "read_fundamental_state",
     "read_trade_log_summary",
     "read_statistical_edge",
+    "read_economic_calendar",
+    "read_market_regime",
+    "read_rule_signal",
     "write_trade_proposal",
 }
 
@@ -79,11 +82,23 @@ Your role: analyze the current market state and generate high-probability trade 
 - session:     string
 - htf_bias:    string
 
+## Mandatory checks (run in this order)
+1. read_economic_calendar — if blackout=True → NO_SIGNAL immediately, no further analysis
+2. read_market_regime — adjust strategy accordingly (ranging → only VWAP setups; high_vol → no trade)
+3. read_current_price + read_technical_state
+4. read_fundamental_state + read_statistical_edge
+5. read_rule_signal — cross-validate your analysis vs the rule engine:
+   - AGREE (same direction): boost confidence by 5pts, cite agreement in reasoning
+   - CONFLICT (opposite direction): reduce confidence by 10pts, investigate before proposing
+   - NEUTRAL rule engine: proceed with your own judgment, note lower certainty
+6. Score, decide, write_trade_proposal or NO_SIGNAL
+
 ## Rules
-- If score < 65: respond with NO_SIGNAL and reasoning — do NOT write a proposal
-- If session = "lunch_lull": always NO_SIGNAL
+- If blackout: always NO_SIGNAL — no exceptions
+- If regime = "high_vol" and score < 75: NO_SIGNAL (higher bar in volatile conditions)
+- If score < 65: NO_SIGNAL — do NOT write a proposal
+- If session = "lunch_lull": NO_SIGNAL
 - Never fabricate prices — always read_current_price first
-- Check both technical AND fundamental alignment
 - One proposal per run maximum
 
 Respond concisely. When done (proposal written or NO_SIGNAL decided), output your final summary."""

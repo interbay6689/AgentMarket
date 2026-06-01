@@ -282,6 +282,66 @@ def read_agent_proposals(n: int = 10) -> list:
         return []
 
 
+def read_economic_calendar() -> dict:
+    """Current economic calendar: today's high-impact events, upcoming in 60m, blackout status."""
+    try:
+        from modules.economic_calendar import calendar_summary
+        return calendar_summary()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def read_market_regime() -> dict:
+    """Current market regime: trending/ranging/high_vol, ADX, ATR ratio, recommended strategies."""
+    try:
+        from modules.regime_detector import classify_regime
+        from modules.nq_data import load_nq_daily_cache
+        df = load_nq_daily_cache()
+        return classify_regime(df)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def read_rule_signal() -> dict:
+    """
+    Output of the rule-based signal engine (no AI — pure indicator scoring).
+    Use this to cross-validate your own analysis: if the rule engine agrees,
+    consensus confidence is higher; if it conflicts, investigate the disagreement.
+    Returns: direction, confidence (0-100), score components, key levels, regime, blackout.
+    """
+    try:
+        from modules.signal_engine import generate_signal
+        sig = generate_signal()
+        # Return a compact summary (strip heavy chart data)
+        return {
+            "direction":       sig.get("direction", "NEUTRAL"),
+            "confidence":      sig.get("confidence", 0),
+            "score":           sig.get("score", 0),
+            "alert":           sig.get("alert", False),
+            "session":         sig.get("session", "?"),
+            "htf_bias":        sig.get("htf_bias", "?"),
+            "htf_strength":    sig.get("htf_strength", 0),
+            "nearest_zone_score": sig.get("nearest_zone_score", 0),
+            "delta_dir":       sig.get("delta_dir", "?"),
+            "vwap_zone":       sig.get("vwap", {}).get("zone", "?"),
+            "stacked_count":   sig.get("stacked", {}).get("count", 0),
+            "blackout":        sig.get("blackout", False),
+            "blackout_reason": sig.get("blackout_reason", ""),
+            "regime":          sig.get("regime", "transitioning"),
+            "regime_label":    sig.get("regime_label", "—"),
+            "factors_summary": [
+                {"factor": f["factor"], "side": f["side"], "pts": f["pts"]}
+                for f in sig.get("factors", [])[:8]
+            ],
+            "entry":  sig.get("entry"),
+            "stop":   sig.get("stop"),
+            "target": sig.get("target"),
+            "rr":     sig.get("rr"),
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ─── WRITE TOOLS ──────────────────────────────────────────────────────────────
 
 def update_fundamental_weights(new_weights: dict, reasoning: str,
@@ -380,6 +440,36 @@ def get_config_history(n: int = 20) -> list:
     return get_change_history(n)
 
 
+def run_backtest_sweep(param: str, test_values: list, lookback_days: int = 180) -> dict:
+    """
+    Backtest a single parameter across multiple values against historical NQ data.
+    Returns ranked results (best profit_factor first) so Config Optimizer can
+    compare proposed vs current before applying any change.
+    """
+    try:
+        from modules.nq_data import load_nq_daily_cache
+        from modules.backtest_engine import sweep_parameter, DEFAULT_PARAMS
+
+        df = load_nq_daily_cache()
+        if df.empty:
+            return {"error": "no_daily_data"}
+
+        if not isinstance(df.index, pd.DatetimeIndex):
+            df.index = pd.to_datetime(df.index, errors="coerce")
+        end   = df.index.max()
+        start = end - pd.Timedelta(days=lookback_days)
+        df    = df[df.index >= start].copy()
+
+        results = sweep_parameter(df, param, [float(v) for v in test_values], DEFAULT_PARAMS)
+        return {
+            "param":   param,
+            "results": results[:8],
+            "best":    results[0] if results else {},
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ─── Tool dispatcher ──────────────────────────────────────────────────────────
 
 TOOL_REGISTRY: dict[str, callable] = {
@@ -391,6 +481,9 @@ TOOL_REGISTRY: dict[str, callable] = {
     "read_all_configs":            read_all_configs,
     "read_insights_log":           read_insights_log,
     "read_agent_proposals":        read_agent_proposals,
+    "read_economic_calendar":      read_economic_calendar,
+    "read_market_regime":          read_market_regime,
+    "read_rule_signal":            read_rule_signal,
     "update_fundamental_weights":  update_fundamental_weights,
     "update_entry_filter":         update_entry_filter,
     "update_agent_config":         update_agent_config,
@@ -399,6 +492,7 @@ TOOL_REGISTRY: dict[str, callable] = {
     "run_dry_run":                 run_dry_run,
     "revert_change":               revert_change,
     "get_config_history":          get_config_history,
+    "run_backtest_sweep":          run_backtest_sweep,
 }
 
 
@@ -572,6 +666,67 @@ TOOL_SCHEMAS = [
             "type": "object",
             "properties": {"n": {"type": "integer", "description": "Number of records (default 20)"}},
             "required": [],
+        },
+    },
+    {
+        "name": "read_economic_calendar",
+        "description": (
+            "Today's USD high-impact economic events, events in the next 60 minutes, "
+            "and current blackout status. Always call before generating a trade proposal."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "read_market_regime",
+        "description": (
+            "Current market regime classification: trending_bull | trending_bear | "
+            "ranging | high_vol | transitioning. Includes ADX, ATR ratio, recommended "
+            "strategies, confidence threshold adjustment, and position size multiplier."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "read_rule_signal",
+        "description": (
+            "Output of the rule-based signal engine (pure indicator scoring, no AI). "
+            "Call after read_technical_state and read_fundamental_state to cross-validate "
+            "your own analysis. If the rule engine agrees → consensus confidence is higher. "
+            "If it conflicts with your analysis → investigate the disagreement before proposing. "
+            "Returns: direction, confidence, score components, suggested entry/stop/target, "
+            "blackout status, regime, and factor breakdown."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "run_backtest_sweep",
+        "description": (
+            "Backtest a parameter across multiple values against historical NQ daily OHLCV. "
+            "Returns ranked results (best profit_factor first). "
+            "Use BEFORE applying any parameter change — confirms the new value outperforms current. "
+            "Example: test signal.min_confidence at [55,60,65,70] over last 180 days."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "param": {
+                    "type": "string",
+                    "enum": [
+                        "signal.min_confidence", "signal.min_zone_score",
+                        "signal.min_rr", "signal.min_margin", "risk.atr_mult",
+                    ],
+                    "description": "Parameter to sweep",
+                },
+                "test_values": {
+                    "type": "array",
+                    "items": {"type": "number"},
+                    "description": "List of values to test (2-8 values recommended)",
+                },
+                "lookback_days": {
+                    "type": "integer",
+                    "description": "Days of history to use (default 180, max 730)",
+                },
+            },
+            "required": ["param", "test_values"],
         },
     },
 ]

@@ -35,6 +35,8 @@ from modules.nq_calculations import (
     calculate_ote_zone, day_of_week_bias, gap_fill_stats,
     delta_zscore, volume_anomaly_score,
 )
+from modules.economic_calendar import calendar_summary, is_blackout_zone
+from modules.regime_detector import classify_regime
 
 IL_TZ  = pytz.timezone("Asia/Jerusalem")
 _LOGS  = _MD / "logs"
@@ -305,6 +307,17 @@ def run() -> dict:
             "dow_long_wr": round(float(dow.get(today_dow, 0.5)) * 100, 1) if dow else None,
             "gap_fill":    gaps,
         }
+
+        # ── Economic Calendar ─────────────────────────────────────────────────
+        state["calendar"]        = _safe(calendar_summary, default={})
+        state["blackout"]        = state["calendar"].get("blackout", False)
+        state["blackout_reason"] = state["calendar"].get("blackout_reason", "")
+
+        # ── Market Regime ─────────────────────────────────────────────────────
+        state["regime"] = _safe(classify_regime, df_daily, default={
+            "regime": "transitioning", "label": "Unknown", "icon": "⚪",
+            "conf_adj": 0, "atr_mult_adj": 0.0, "size_adj": 1.0,
+        })
 
         # ── Composite Signal Score (pre-assessment) ───────────────────────────
         state["composite_score"] = _quick_score(state)

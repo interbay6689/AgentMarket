@@ -2,6 +2,8 @@
 Signal engine — Multi-Timeframe confluence scoring.
 Technical: 75 pts  |  Fundamental: 25 pts
 Entry fires when direction score ≥ 55 pts AND leads opponent by ≥ 15 pts.
+Regime-aware: confidence threshold adjusted by Market Regime Classifier.
+Blackout-aware: returns NO_SIGNAL during high-impact economic events.
 """
 from __future__ import annotations
 
@@ -33,6 +35,8 @@ from modules.nq_data import (
     fetch_nq_15m,
     current_session_israel,
 )
+from modules.economic_calendar import is_blackout_zone, get_todays_events
+from modules.regime_detector import classify_regime
 
 _CONFIG = _ROOT / "scores_news" / "config"
 _ML_DIR = _ROOT / "scores_news" / "ml_model"
@@ -132,6 +136,21 @@ def generate_signal() -> dict:
     session   = current_session_israel()
     final_score = _latest_final_score()
     ml_pred     = _load_ml_prediction()
+
+    # ── Economic Calendar Blackout ──────────────────────────────
+    blackout = {}
+    try:
+        blackout = is_blackout_zone()
+    except Exception:
+        blackout = {"blackout": False, "reason": "calendar unavailable"}
+
+    # ── Market Regime ───────────────────────────────────────────
+    regime = {}
+    try:
+        regime = classify_regime(df_daily)
+    except Exception:
+        regime = {"regime": "transitioning", "conf_adj": 0, "atr_mult_adj": 0.0,
+                  "size_adj": 1.0, "label": "Unknown", "icon": "⚪"}
 
     current_price: float = np.nan
     if not df_5m.empty:
@@ -275,13 +294,17 @@ def generate_signal() -> dict:
     else:
         factors.append({"factor": "ML Prediction", "value": ml_label, "side": "NEUTRAL", "pts": 0})
 
-    # ── Direction decision ──────────────────────────────────────
+    # ── Direction decision (regime-adjusted thresholds) ────────
     # Max pts: Technical 75 + Fundamental 25 = 100
     # Session (BOTH) inflates both sides equally — net margin stays clean
-    _MIN_PTS    = 55   # minimum score to fire a direction
+    _MIN_PTS    = 55 - regime.get("conf_adj", 0)   # regime lowers/raises bar
     _MIN_MARGIN = 15   # must lead opponent by at least 15 pts
 
-    if long_pts >= _MIN_PTS and (long_pts - short_pts) >= _MIN_MARGIN:
+    # ── Economic Calendar Blackout override ─────────────────────
+    if blackout.get("blackout"):
+        direction  = "NEUTRAL"
+        confidence = 0
+    elif long_pts >= _MIN_PTS and (long_pts - short_pts) >= _MIN_MARGIN:
         direction  = "LONG"
         confidence = min(100, round(long_pts / max(long_pts + short_pts, 1) * 100))
     elif short_pts >= _MIN_PTS and (short_pts - long_pts) >= _MIN_MARGIN:
@@ -291,7 +314,8 @@ def generate_signal() -> dict:
         direction  = "NEUTRAL"
         confidence = 0
 
-    # ── Risk management — dynamic ATR stop ─────────────────────
+    # ── Risk management — dynamic ATR stop (regime-adjusted) ───
+    atr_mult  = 1.5 + regime.get("atr_mult_adj", 0.0)
     entry:        float = current_price
     stop:         float = np.nan
     target:       float = np.nan
@@ -300,7 +324,7 @@ def generate_signal() -> dict:
     rr:           float = np.nan
 
     if direction != "NEUTRAL" and not np.isnan(entry):
-        stop = calculate_dynamic_stop(df_daily, direction, entry, atr_period=14, atr_mult=1.5)
+        stop = calculate_dynamic_stop(df_daily, direction, entry, atr_period=14, atr_mult=atr_mult)
         risk = abs(entry - stop)
 
         tgt = _find_zone_target(zones, entry, direction, stop=stop, min_rr=1.5)
@@ -320,6 +344,7 @@ def generate_signal() -> dict:
     direction_pts = long_pts if direction == "LONG" else short_pts
     alert = (
         direction != "NEUTRAL"
+        and not blackout.get("blackout", False)
         and direction_pts >= 60
         and nearest_zone_score >= 5
         and not np.isnan(rr)
@@ -352,4 +377,13 @@ def generate_signal() -> dict:
         "long_pts":           long_pts,
         "short_pts":          short_pts,
         "session_quality":    sq,
+        # ── New: Calendar + Regime ──────────────────────────────
+        "blackout":           blackout.get("blackout", False),
+        "blackout_reason":    blackout.get("reason", ""),
+        "regime":             regime.get("regime", "transitioning"),
+        "regime_label":       regime.get("label", "—"),
+        "regime_icon":        regime.get("icon", "⚪"),
+        "regime_strategies":  regime.get("strategies", []),
+        "regime_size_adj":    regime.get("size_adj", 1.0),
+        "regime_conf_adj":    regime.get("conf_adj", 0),
     }
