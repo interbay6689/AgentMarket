@@ -27,8 +27,6 @@ for p in (str(_MD), str(_ROOT)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-import anthropic
-
 from agents.agent_tools import TOOL_SCHEMAS, execute_tool
 from agents.indicators_agent import load_state as load_indicator_state
 
@@ -168,6 +166,16 @@ def run(force: bool = False) -> dict:
             _log_run(run_result)
             return run_result
 
+        # Lazy import — keeps the module loadable even without the package installed
+        try:
+            import anthropic as _anthropic
+        except ImportError:
+            run_result.update({"outcome": "error",
+                                "reason": "anthropic package not installed — run: pip install anthropic"})
+            _update_status("error", error="anthropic not installed")
+            _log_run(run_result)
+            return run_result
+
         # Check API key
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
@@ -176,7 +184,7 @@ def run(force: bool = False) -> dict:
             _log_run(run_result)
             return run_result
 
-        client = anthropic.Anthropic(api_key=api_key)
+        client = _anthropic.Anthropic(api_key=api_key)
 
         # Build context snapshot for the user message
         ctx_lines = [

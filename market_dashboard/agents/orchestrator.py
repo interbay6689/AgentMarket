@@ -37,7 +37,8 @@ try:
 except ImportError:
     _APScheduler_available = False
 
-from agents import indicators_agent, signal_agent, analysis_agent, config_optimizer
+# Agent modules imported lazily inside job functions so that missing
+# optional dependencies (anthropic, apscheduler) don't crash the UI on load.
 
 IL_TZ  = pytz.timezone("Asia/Jerusalem")
 _LOGS  = _MD / "logs"
@@ -93,6 +94,7 @@ def _append_orch_log(entry: dict) -> None:
 def _job_indicators() -> None:
     """Scheduled job: run indicators_agent."""
     try:
+        from agents import indicators_agent
         state = indicators_agent.run()
         score = state.get("composite_score", {}).get("total", 0)
         _append_orch_log({"job": "indicators", "status": "done", "score": score})
@@ -104,6 +106,7 @@ def _job_indicators() -> None:
 def _job_signal() -> None:
     """Scheduled job: run signal_agent (only if composite_score ≥ 65)."""
     try:
+        from agents import signal_agent
         result = signal_agent.run()
         _append_orch_log({
             "job":    "signal_agent",
@@ -117,6 +120,7 @@ def _job_signal() -> None:
 
 def _job_indicators_then_signal() -> None:
     """Combined job: indicators first, then signal (if escalate)."""
+    from agents import indicators_agent
     _job_indicators()
     state = indicators_agent.load_state()
     if state.get("composite_score", {}).get("escalate", False):
@@ -132,10 +136,11 @@ def _job_indicators_then_signal() -> None:
 def _job_analysis() -> None:
     """Scheduled job: run analysis_agent (auto-evaluate trades + write insights)."""
     try:
+        from agents import analysis_agent
         result = analysis_agent.run()
         _append_orch_log({
-            "job":     "analysis_agent",
-            "status":  result.get("outcome", "?"),
+            "job":      "analysis_agent",
+            "status":   result.get("outcome", "?"),
             "insights": result.get("insights_written", 0),
             "evaluated": result.get("trades_evaluated", 0),
         })
@@ -147,6 +152,7 @@ def _job_analysis() -> None:
 def _job_config_optimizer() -> None:
     """Scheduled job: daily config optimization."""
     try:
+        from agents import config_optimizer
         result = config_optimizer.run()
         _append_orch_log({
             "job":     "config_optimizer",
@@ -244,15 +250,20 @@ def run_once(agent_name: str) -> dict:
     _update_orch_status("running", f"manual run: {agent_name}")
     try:
         if agent_name == "indicators":
+            from agents import indicators_agent
             result = indicators_agent.run()
         elif agent_name == "signal":
+            from agents import signal_agent
             result = signal_agent.run(force=True)
         elif agent_name == "indicators_signal":
+            from agents import indicators_agent, signal_agent
             _job_indicators()
             result = signal_agent.run()
         elif agent_name == "analysis":
+            from agents import analysis_agent
             result = analysis_agent.run()
         elif agent_name == "optimizer":
+            from agents import config_optimizer
             result = config_optimizer.run(force=True)
         else:
             result = {"error": f"Unknown agent: {agent_name}"}

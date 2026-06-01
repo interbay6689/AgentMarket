@@ -25,8 +25,6 @@ for p in (str(_MD), str(_ROOT)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-import anthropic
-
 from agents.agent_tools import TOOL_SCHEMAS, execute_tool
 from modules.trade_tracker import evaluate_open_trades, load_trade_log
 
@@ -169,6 +167,16 @@ def run() -> dict:
         recent = _get_recently_closed(hours=4)
         run_result["recent_closed"] = len(recent)
 
+        # Lazy import
+        try:
+            import anthropic as _anthropic
+        except ImportError:
+            run_result.update({"outcome": "error",
+                                "reason": "anthropic package not installed — run: pip install anthropic"})
+            _update_status("error", error="anthropic not installed")
+            _log_run(run_result)
+            return run_result
+
         # Check API key
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
@@ -177,7 +185,7 @@ def run() -> dict:
             _log_run(run_result)
             return run_result
 
-        client = anthropic.Anthropic(api_key=api_key)
+        client = _anthropic.Anthropic(api_key=api_key)
 
         # Build context message
         ctx_lines = [
