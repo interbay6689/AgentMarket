@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 import subprocess
-from sklearn.ensemble import RandomForestClassifier
 import joblib
 import matplotlib
 from datetime import datetime
@@ -12,71 +11,86 @@ from datetime import datetime
 matplotlib.use('Agg')
 
 _ROOT = Path(__file__).resolve().parents[2]
+_SCORE_PATH  = _ROOT / "scores_news" / "config" / "score_log.csv"
+_MERGED_PATH = _ROOT / "scores_news" / "ml_model" / "merged_scores_mes.csv"
+_MODEL_PATH  = _ROOT / "scores_news" / "ml_model" / "model.pkl"
+_PERF_PATH   = _ROOT / "scores_news" / "ml_model" / "ml_performance_log.csv"
+
+
+@st.cache_data(ttl=300)
+def _load_score_log():
+    df = pd.read_csv(_SCORE_PATH)
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    return df.dropna(subset=["date"]).sort_values("date")
+
+
+@st.cache_data(ttl=300)
+def _load_ml_prediction():
+    try:
+        df = pd.read_csv(_MERGED_PATH)
+        df['date'] = pd.to_datetime(df['date'])
+        latest = df.sort_values("date").iloc[-1]
+        model = joblib.load(_MODEL_PATH)
+        X = pd.DataFrame(
+            [[latest[c] for c in ['sentiment_score', 'macro_score', 'bonds_score',
+                                  'futures_vix_score', 'sectors_score', 'mes_score']]],
+            columns=['sentiment', 'macro', 'bonds', 'futures_vix', 'sectors', 'mes']
+        )
+        pred = model.predict(X)[0]
+        return {1: "✅ LONG", -1: "❌ SHORT", 0: "🔒 NEUTRAL"}.get(pred, "🔒")
+    except Exception as e:
+        return f"לא זמין ({e})"
+
+
+@st.cache_data(ttl=300)
+def _load_model_accuracy():
+    try:
+        df = pd.read_csv(_PERF_PATH)
+        acc = (df['correct'] == '✅').mean() * 100
+        return f"{acc:.1f}% ({len(df)} ימים)"
+    except Exception:
+        return "לא זמין"
+
 
 def app():
-    st.title("📊 Market Sentiment Dashboard – החלטת מסחר יומית רשמית")
+    # === כותרת + כפתור רענן ===
+    col_title, col_refresh = st.columns([6, 1])
+    with col_title:
+        st.title("📊 Market Sentiment Dashboard – החלטת מסחר יומית רשמית")
+    with col_refresh:
+        st.write("")
+        if st.button("🔄 רענן", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
 
-    # === המלצה יומית ע"י מודל ML ===
-    def load_ml_prediction():
-        try:
-            df = pd.read_csv(
-                _ROOT / "scores_news" / "ml_model" / "merged_scores_mes.csv")
-            df['date'] = pd.to_datetime(df['date'])
-            latest = df.sort_values("date").iloc[-1]
+    st.caption(f"עודכן לאחרונה: {datetime.now().strftime('%H:%M:%S')} | מתעדכן אוטומטית כל 5 דקות")
 
-            model = joblib.load(_ROOT / "scores_news" / "ml_model" / "model.pkl")
-            X = pd.DataFrame([[latest[col] for col in ['sentiment_score', 'macro_score', 'bonds_score',
-                                                       'futures_vix_score', 'sectors_score', 'mes_score']]],
-                             columns=['sentiment', 'macro', 'bonds', 'futures_vix', 'sectors', 'mes'])
-            pred = model.predict(X)[0]
-            label = {1: "✅ LONG", -1: "❌ SHORT", 0: "🔒 NEUTRAL"}.get(pred, "🔒")
-            return label
-
-        except Exception as e:
-            return f"שגיאה: {e}"
-
-    def load_model_accuracy():
-        try:
-            df = pd.read_csv(
-                _ROOT / "scores_news" / "ml_model" / "ml_performance_log.csv")
-            acc = (df['correct'] == '✅').mean() * 100
-            return f"{acc:.1f}% ({len(df)} ימים)"
-        except:
-            return "לא זמין"
-
-    # 🧠 הצגת תחזית יומית של המודל
+    # === תחזית ML ===
     st.subheader("🧠 תחזית בינה מלאכותית")
     col1, col2 = st.columns(2)
-    col1.metric("📍 המלצת AI יומית", load_ml_prediction())
-    col2.metric("🎯 דיוק מצטבר", load_model_accuracy())
+    col1.metric("📍 המלצת AI יומית", _load_ml_prediction())
+    col2.metric("🎯 דיוק מצטבר", _load_model_accuracy())
 
     with st.expander("🧠 ניהול חיזוי יומי"):
         if st.button("🚀 הרץ תחזית יומית"):
-            try:
-                pred = load_ml_prediction()
-                st.success(f"✅ תחזית חיה: {pred}")
-            except Exception as e:
-                st.error(f"שגיאה בהרצת תחזית: {e}")
+            st.cache_data.clear()
+            st.success(f"✅ תחזית: {_load_ml_prediction()}")
 
         if st.button("📊 בדוק הצלחת חיזוי"):
-            current_hour = datetime.now().hour
-            if current_hour >= 20:
+            if datetime.now().hour >= 20:
                 try:
                     result = subprocess.run(
                         ["python", str(_ROOT / "scores_news" / "ml_model" / "performance_tracker.py")],
                         capture_output=True, text=True
                     )
-                    st.success("📈 התחזית הושוותה בהצלחה מול התוצאה בפועל!")
+                    st.success("📈 התחזית הושוותה בהצלחה!")
                     st.code(result.stdout)
                 except Exception as e:
-                    st.error(f"שגיאה בהרצת performance_tracker: {e}")
+                    st.error(f"שגיאה: {e}")
             else:
-                st.warning("⏳ ניתן לבדוק הצלחת תחזית רק לאחר השעה 20:00 (שעון ישראל)")
+                st.warning("⏳ ניתן לבדוק רק לאחר השעה 20:00 (שעון ישראל)")
 
-    score_path = _ROOT / "scores_news" / "config" / "score_log.csv"
-    mes_path = _ROOT / "scores_news" / "config" / "MES_data.csv"
-
-    # כפתור הרצה
+    # === הפעל ניתוח יומי ===
     with st.expander("🚀 הפעל ניתוח יומי"):
         if st.button("הרץ final_score.py"):
             try:
@@ -86,47 +100,43 @@ def app():
                 )
                 st.success("✅ הרצה הסתיימה בהצלחה")
                 st.code(result.stdout)
+                st.cache_data.clear()
+                st.rerun()
             except Exception as e:
-                st.error(f"שגיאה בהרצה: {e}")
+                st.error(f"שגיאה: {e}")
 
+    # === טעינת נתוני ציונים ===
     try:
-        df = pd.read_csv(score_path)
-        df["date"] = pd.to_datetime(df["date"], errors="coerce")
-        df = df.dropna(subset=["date"]).sort_values("date")
+        df = _load_score_log()
         last_day = df.iloc[-1]
-
-        # ציונים אחרונים
         score_columns = [col for col in df.columns if col.endswith("_score")]
-        final_score = last_day["final_score"]
-        bias = last_day["bias"]
 
-        # הצגה עליונה
         st.subheader(f"📆 {last_day['date'].date()} — החלטה יומית")
         col1, col2 = st.columns(2)
-        col1.metric("🎯 ציון משוקלל", final_score)
-        col2.metric("📌 המלצה", bias)
+        col1.metric("🎯 ציון משוקלל", last_day.get("final_score", "—"))
+        col2.metric("📌 המלצה", last_day.get("bias", "—"))
 
-        # כרטיסים לפי קטגוריה
+        # כרטיסי קטגוריות
         st.markdown("### 📊 ציוני קטגוריות")
         cols = st.columns(len(score_columns))
         for i, col_name in enumerate(score_columns):
-            cat = col_name.replace("_score", "").capitalize()
             score = last_day[col_name]
+            color = "🟢" if score >= 60 else "🟡" if score >= 40 else "🔴"
             with cols[i]:
-                color = "🟢" if score >= 60 else "🟡" if score >= 40 else "🔴"
-                st.metric(label=cat, value=f"{score:.0f}", delta=color)
+                st.metric(label=col_name.replace("_score", "").capitalize(),
+                          value=f"{score:.0f}", delta=color)
 
-        # גרף קווי של קטגוריות
+        # גרף מגמות
         st.markdown("### 📈 מגמות לפי קטגוריות")
         st.line_chart(df.set_index("date")[score_columns], height=250)
 
-        # השוואה ל־MES
+        # השוואת Final Score ל-MES
         st.markdown("### 🔁 השוואת Final Score ל־MES")
         plot_cols = [c for c in ["final_score", "daily_change_pct"] if c in df.columns]
         if plot_cols:
             st.line_chart(df.set_index("date")[plot_cols], height=250)
         else:
-            st.warning("📁 אין נתוני daily_change_pct ב-score_log.csv")
+            st.info("📁 daily_change_pct יוצג לאחר הרצת final_score.py")
 
         # Heatmap
         st.markdown("### 🌡 Heatmap ציונים אחרונים")
@@ -136,12 +146,12 @@ def app():
             cmap="RdYlGn", annot=True, fmt=".0f", linewidths=0.5, ax=ax
         )
         st.pyplot(fig)
+        plt.close(fig)
 
-        # עמודות לפי היום האחרון
+        # בר-צ'ארט יום אחרון
         st.markdown("### 📊 קטגוריות – היום האחרון")
-        latest_scores = {col.replace("_score", ""): last_day[col] for col in score_columns}
-        df_bar = pd.DataFrame.from_dict(latest_scores, orient="index", columns=["score"])
-        st.bar_chart(df_bar)
+        latest_scores = {c.replace("_score", ""): last_day[c] for c in score_columns}
+        st.bar_chart(pd.DataFrame.from_dict(latest_scores, orient="index", columns=["score"]))
 
     except Exception as e:
         st.error(f"❌ שגיאה בטעינת הנתונים: {e}")
