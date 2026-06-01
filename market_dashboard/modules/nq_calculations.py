@@ -892,3 +892,143 @@ def volume_anomaly_score(df: pd.DataFrame, window: int = 30) -> float:
     recent = float(df["volume"].tail(3).mean())
     hist   = float(df["volume"].tail(window).mean())
     return round(recent / hist, 2) if hist > 0 else 1.0
+
+
+# ─── ICT Macro Windows ────────────────────────────────────────────────────────
+
+_ICT_MACRO_WINDOWS = [
+    {"name": "London Open Macro",    "et_start": "02:33", "et_end": "02:55", "session": "overnight"},
+    {"name": "London Continuation",  "et_start": "04:03", "et_end": "04:20", "session": "overnight"},
+    {"name": "Pre-Market Macro",     "et_start": "08:50", "et_end": "09:10", "session": "pre_market"},
+    {"name": "NY AM Macro 1",        "et_start": "09:50", "et_end": "10:10", "session": "rth"},
+    {"name": "NY AM Macro 2",        "et_start": "10:50", "et_end": "11:10", "session": "rth"},
+    {"name": "Noon Macro",           "et_start": "11:50", "et_end": "12:10", "session": "rth"},
+    {"name": "PM Macro 1",           "et_start": "13:10", "et_end": "13:30", "session": "pm"},
+    {"name": "PM Macro 2",           "et_start": "14:50", "et_end": "15:10", "session": "pm"},
+    {"name": "PM Close Setup",       "et_start": "15:15", "et_end": "15:45", "session": "power_hour"},
+]
+
+
+def detect_ict_macros(df_5m: pd.DataFrame) -> list[dict]:
+    """
+    Analyze ICT Macro windows for today.
+    Each window is a ~20-min period where institutions may manipulate price
+    (stop hunt) before the real direction displacement occurs.
+
+    Returns list of dicts per window:
+      name, et_start, et_end, status, direction, range_pts, pattern, active, il_start, il_end
+    """
+    import pytz
+    from datetime import datetime, date
+
+    ET_TZ = pytz.timezone("America/New_York")
+    IL_TZ = pytz.timezone("Asia/Jerusalem")
+
+    results = []
+    now_et = datetime.now(ET_TZ)
+    today  = now_et.date()
+
+    # Try to get ET timestamps from df_5m
+    has_et = "datetime_et" in df_5m.columns
+
+    def _et_time(hh_mm: str):
+        h, m = int(hh_mm[:2]), int(hh_mm[3:])
+        from datetime import datetime as dt
+        return ET_TZ.localize(dt(today.year, today.month, today.day, h, m))
+
+    def _il_label(et_hhmm: str) -> str:
+        et_dt = _et_time(et_hhmm)
+        return et_dt.astimezone(IL_TZ).strftime("%H:%M")
+
+    for window in _ICT_MACRO_WINDOWS:
+        w_start = _et_time(window["et_start"])
+        w_end   = _et_time(window["et_end"])
+        is_active   = w_start <= now_et < w_end
+        is_complete = now_et >= w_end
+        is_pending  = now_et < w_start
+
+        entry = {
+            "name":     window["name"],
+            "et_start": window["et_start"],
+            "et_end":   window["et_end"],
+            "il_start": _il_label(window["et_start"]),
+            "il_end":   _il_label(window["et_end"]),
+            "session":  window["session"],
+            "active":   is_active,
+            "status":   "active" if is_active else ("complete" if is_complete else "pending"),
+        }
+
+        if (is_active or is_complete) and not df_5m.empty and has_et:
+            try:
+                df_5m_cp = df_5m.copy()
+                df_5m_cp["_et"] = pd.to_datetime(df_5m_cp["datetime_et"], utc=True).dt.tz_convert(ET_TZ)
+
+                # Bars inside the macro window
+                mask_w = (df_5m_cp["_et"] >= w_start) & (df_5m_cp["_et"] < w_end)
+                w_bars = df_5m_cp[mask_w]
+
+                # Bars in the 30 minutes before the window (context)
+                ctx_start = w_start - pd.Timedelta(minutes=30)
+                mask_ctx  = (df_5m_cp["_et"] >= ctx_start) & (df_5m_cp["_et"] < w_start)
+                ctx_bars  = df_5m_cp[mask_ctx]
+
+                if not w_bars.empty:
+                    w_high = float(w_bars["high"].max())
+                    w_low  = float(w_bars["low"].min())
+                    w_open = float(w_bars.iloc[0]["open"])
+                    w_close = float(w_bars.iloc[-1]["close"])
+                    w_range = round(w_high - w_low, 1)
+                    w_move  = round(w_close - w_open, 1)
+
+                    entry["range_pts"]  = w_range
+                    entry["move_pts"]   = w_move
+                    entry["w_high"]     = round(w_high, 1)
+                    entry["w_low"]      = round(w_low, 1)
+                    entry["direction"]  = "bullish" if w_move > 0 else ("bearish" if w_move < 0 else "neutral")
+
+                    # Pattern detection
+                    pattern = "quiet"
+                    if not ctx_bars.empty:
+                        ctx_high = float(ctx_bars["high"].max())
+                        ctx_low  = float(ctx_bars["low"].min())
+                        swept_high = w_high > ctx_high and w_close < ctx_high
+                        swept_low  = w_low  < ctx_low  and w_close > ctx_low
+                        if swept_high:
+                            pattern = "sweep_high_reversal"   # Bearish Judas
+                        elif swept_low:
+                            pattern = "sweep_low_reversal"    # Bullish Judas
+                        elif abs(w_move) > 8:
+                            pattern = "displacement_bullish" if w_move > 0 else "displacement_bearish"
+                        elif w_range > 5:
+                            pattern = "chop"
+
+                    entry["pattern"] = pattern
+                    entry["pattern_label"] = {
+                        "sweep_high_reversal":   "🔻 Sweep High + Reversal (Bearish Judas)",
+                        "sweep_low_reversal":    "🔺 Sweep Low + Reversal (Bullish Judas)",
+                        "displacement_bullish":  "🚀 Bullish Displacement",
+                        "displacement_bearish":  "📉 Bearish Displacement",
+                        "chop":                  "↔️ Choppy / No Clear Bias",
+                        "quiet":                 "😴 Quiet — Low Activity",
+                    }.get(pattern, pattern)
+                else:
+                    entry["range_pts"]    = 0
+                    entry["move_pts"]     = 0
+                    entry["direction"]    = "no_data"
+                    entry["pattern"]      = "no_data"
+                    entry["pattern_label"] = "⏳ No bars yet"
+
+            except Exception:
+                entry["pattern"] = "error"
+                entry["pattern_label"] = "⚠️ Error computing"
+
+        else:
+            if is_pending:
+                entry["pattern_label"] = "⏰ Pending"
+            else:
+                entry["pattern_label"] = "—"
+
+        results.append(entry)
+
+    return results
+

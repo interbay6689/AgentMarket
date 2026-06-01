@@ -856,6 +856,77 @@ def app():
             else:
                 st.metric("ATR Consumed", "לא זמין")
 
+        # ── ICT Macro Windows ─────────────────────────────────────────────────
+        st.divider()
+        st.markdown("### ⏱️ ICT Macro Windows — חלונות זמן אלגוריתמיים")
+        st.caption("חלונות של ~20 דקות בהם אלגוריתמים מוסדיים מניפולציות מחיר לפני ה-displacement האמיתי")
+
+        try:
+            macros = nq_calculations.detect_ict_macros(df_5m)
+            if macros:
+                now_et_str = datetime.now(ET_TZ).strftime("%H:%M")
+                for macro in macros:
+                    status  = macro.get("status", "pending")
+                    active  = macro.get("active", False)
+                    label   = macro.get("pattern_label", "—")
+                    pattern = macro.get("pattern", "")
+
+                    # Color by pattern
+                    if active:
+                        bg = "#1a3a5c"
+                        border = "2px solid #3498db"
+                    elif "sweep_low" in pattern or "displacement_bullish" in pattern:
+                        bg = "#0d3b27"; border = "1px solid #00c851"
+                    elif "sweep_high" in pattern or "displacement_bearish" in pattern:
+                        bg = "#3b0d0d"; border = "1px solid #ff4444"
+                    elif status == "pending":
+                        bg = "#1a1a2e"; border = "1px solid #444"
+                    else:
+                        bg = "#1c1c1c"; border = "1px solid #333"
+
+                    with st.container():
+                        cols = st.columns([2, 1, 1, 3, 1])
+                        name_str = f"{'🔴 LIVE — ' if active else ''}{macro['name']}"
+                        cols[0].markdown(f"**{name_str}**")
+                        cols[1].caption(f"🇺🇸 {macro['et_start']}–{macro['et_end']} ET")
+                        cols[2].caption(f"🇮🇱 {macro['il_start']}–{macro['il_end']}")
+                        cols[3].markdown(label)
+                        if status == "complete" and macro.get("range_pts"):
+                            rng = macro["range_pts"]
+                            move = macro.get("move_pts", 0)
+                            cols[4].caption(f"±{rng:.0f}p / {move:+.0f}p")
+                        elif status == "active":
+                            cols[4].markdown("🟡")
+                        else:
+                            cols[4].caption("⏰")
+            else:
+                st.info("ICT Macro נתונים לא זמינים — נדרשים נתוני 5m עם datetime_et")
+        except Exception as e:
+            st.caption(f"ICT Macros: {e}")
+
+        with st.expander("📖 מדריך ICT Macros"):
+            st.markdown("""
+**ICT Macro Windows** הם חלונות זמן ספציפיים שבהם האלגוריתמים של ICT (Inner Circle Trader)
+פועלים ליצירת liquidity sweeps ולאחר מכן displacement אמיתי:
+
+| חלון | שעה ET | שעה ישראל | מאפיין |
+|------|---------|-----------|--------|
+| London Open Macro | 02:33–02:55 | 09:33–09:55 | Stop hunt על overnight range |
+| London Continuation | 04:03–04:20 | 11:03–11:20 | יציאה מ-London range |
+| Pre-Market Macro | 08:50–09:10 | 15:50–16:10 | הכנה ל-RTH — sweep של Pre-market H/L |
+| **NY AM Macro 1** | **09:50–10:10** | **16:50–17:10** | **החשוב ביותר — Stop hunt + reversal** |
+| **NY AM Macro 2** | **10:50–11:10** | **17:50–18:10** | **המשך Distribution/Accumulation** |
+| Noon Macro | 11:50–12:10 | 18:50–19:10 | Midday reversal setup |
+| PM Macro 1 | 13:10–13:30 | 20:10–20:30 | תחילת PM session manipulation |
+| PM Macro 2 | 14:50–15:10 | 21:50–22:10 | הכנה ל-Power Hour |
+| PM Close Setup | 15:15–15:45 | 22:15–22:45 | MOC accumulation + stop hunt |
+
+**Patterns:**
+- 🔻 **Sweep High + Reversal** = Bearish Judas swing — מחיר פרץ מעל high, ואז ירד → כניסה שורט
+- 🔺 **Sweep Low + Reversal** = Bullish Judas swing — מחיר פרץ מתחת low, ואז עלה → כניסה לונג
+- 🚀 **Displacement** = תנועה חדה ברורה בכיוון — continuation trade
+            """)
+
         # ICT Concepts Reference
         st.divider()
         st.markdown("### 📖 מדריך ICT/SMC מהיר")
