@@ -282,6 +282,26 @@ def read_agent_proposals(n: int = 10) -> list:
         return []
 
 
+def read_economic_calendar() -> dict:
+    """Current economic calendar: today's high-impact events, upcoming in 60m, blackout status."""
+    try:
+        from modules.economic_calendar import calendar_summary
+        return calendar_summary()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def read_market_regime() -> dict:
+    """Current market regime: trending/ranging/high_vol, ADX, ATR ratio, recommended strategies."""
+    try:
+        from modules.regime_detector import classify_regime
+        from modules.nq_data import load_nq_daily_cache
+        df = load_nq_daily_cache()
+        return classify_regime(df)
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ─── WRITE TOOLS ──────────────────────────────────────────────────────────────
 
 def update_fundamental_weights(new_weights: dict, reasoning: str,
@@ -421,6 +441,8 @@ TOOL_REGISTRY: dict[str, callable] = {
     "read_all_configs":            read_all_configs,
     "read_insights_log":           read_insights_log,
     "read_agent_proposals":        read_agent_proposals,
+    "read_economic_calendar":      read_economic_calendar,
+    "read_market_regime":          read_market_regime,
     "update_fundamental_weights":  update_fundamental_weights,
     "update_entry_filter":         update_entry_filter,
     "update_agent_config":         update_agent_config,
@@ -604,6 +626,23 @@ TOOL_SCHEMAS = [
             "properties": {"n": {"type": "integer", "description": "Number of records (default 20)"}},
             "required": [],
         },
+    },
+    {
+        "name": "read_economic_calendar",
+        "description": (
+            "Today's USD high-impact economic events, events in the next 60 minutes, "
+            "and current blackout status. Always call before generating a trade proposal."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "read_market_regime",
+        "description": (
+            "Current market regime classification: trending_bull | trending_bear | "
+            "ranging | high_vol | transitioning. Includes ADX, ATR ratio, recommended "
+            "strategies, confidence threshold adjustment, and position size multiplier."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "required": []},
     },
     {
         "name": "run_backtest_sweep",

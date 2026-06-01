@@ -117,6 +117,56 @@ def _render_rr_metrics(sig: dict):
     )
 
 
+def _render_blackout_banner(sig: dict):
+    if sig.get("blackout"):
+        reason = sig.get("blackout_reason", "High-impact economic event")
+        st.markdown(
+            f"""
+            <div style="background:#b71c1c30; border:2px solid #b71c1c;
+                        padding:12px 20px; border-radius:8px; margin-bottom:10px;">
+                🚫 <b style="color:#ff5252;">BLACKOUT ZONE — NO TRADING</b><br>
+                <span style="color:#ffcdd2; font-size:.9em;">{reason}</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+def _render_regime_badge(sig: dict):
+    regime       = sig.get("regime", "transitioning")
+    regime_label = sig.get("regime_label", "Transitioning")
+    regime_icon  = sig.get("regime_icon", "⚪")
+    strategies   = sig.get("regime_strategies", [])
+    conf_adj     = sig.get("regime_conf_adj", 0)
+    size_adj     = sig.get("regime_size_adj", 1.0)
+
+    conf_str = f"+{conf_adj}pts threshold" if conf_adj > 0 else f"{conf_adj}pts threshold" if conf_adj < 0 else "standard threshold"
+    size_str = f"×{size_adj:.2g} size"
+
+    border_color = {
+        "trending_bull":  "#00c853",
+        "trending_bear":  "#d50000",
+        "ranging":        "#ffd600",
+        "high_vol":       "#ff9800",
+        "transitioning":  "#9e9e9e",
+    }.get(regime, "#9e9e9e")
+
+    strat_html = "".join(f"<li style='margin:1px 0'>{s}</li>" for s in strategies[:3])
+    st.markdown(
+        f"""
+        <div style="background:{border_color}18; border-left:4px solid {border_color};
+                    padding:10px 16px; border-radius:6px; margin:8px 0;">
+            <b style="color:{border_color};">{regime_icon} {regime_label}</b>
+            &nbsp;<span style="color:#aaa; font-size:.85em;">({conf_str} · {size_str})</span>
+            <ul style="margin:4px 0 0 0; padding-left:18px; color:#ccc; font-size:.85em;">
+                {strat_html}
+            </ul>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _render_alert_banner(sig: dict):
     if sig["alert"]:
         direction = sig["direction"]
@@ -362,6 +412,10 @@ def app():
                 if log_trade(sig):
                     st.session_state["_last_logged"] = sig_hash
                     st.toast("📝 Trade logged to Journal", icon="✅")
+
+    # ── Blackout / Regime status ────────────────────────────────
+    _render_blackout_banner(sig)
+    _render_regime_badge(sig)
 
     # ── Main signal card ────────────────────────────────────────
     _render_signal_card(sig)
