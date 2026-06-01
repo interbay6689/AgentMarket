@@ -31,9 +31,14 @@ def load_sentiment_data(date: str | None = None) -> pd.DataFrame:
     return pd.read_csv(path)
 
 def calculate_sentiment_score(df: pd.DataFrame) -> tuple[int, str]:
+    if df.empty:
+        return 50, "No sentiment data available"
     articles = df.to_dict(orient="records")
     analyzed = analyze_articles(articles)
     labeled_df = pd.DataFrame(analyzed)
+
+    if labeled_df.empty or "sentiment_label" not in labeled_df.columns:
+        return 50, "No articles analyzed"
 
     total = len(labeled_df)
     pos = (labeled_df["sentiment_label"] == "positive").sum()
@@ -41,7 +46,7 @@ def calculate_sentiment_score(df: pd.DataFrame) -> tuple[int, str]:
     neu = (labeled_df["sentiment_label"] == "neutral").sum()
 
     if total == 0:
-        return 50, "🔒 אין מספיק נתונים לחישוב סנטימנט"
+        return 50, "No articles to score"
 
     # שקילה: positive = +1, neutral = 0.5, negative = 0
     score = round(((pos * 1.0) + (neu * 0.5)) / total * 100)

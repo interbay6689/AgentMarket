@@ -6,35 +6,54 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 import joblib
 
-_ROOT = Path(__file__).resolve().parents[2]
+_ROOT            = Path(__file__).resolve().parents[2]
 MERGED_DATA_PATH = _ROOT / "scores_news" / "ml_model" / "merged_scores_mes.csv"
-MODEL_PATH = _ROOT / "scores_news" / "ml_model" / "model.pkl"
+MODEL_PATH       = _ROOT / "scores_news" / "ml_model" / "model.pkl"
+
+FEATURE_COLS = ['sentiment', 'macro', 'bonds', 'futures_vix', 'sectors', 'mes']
+RENAME_MAP = {
+    'sentiment_score': 'sentiment', 'macro_score': 'macro', 'bonds_score': 'bonds',
+    'futures_vix_score': 'futures_vix', 'sectors_score': 'sectors', 'mes_score': 'mes'
+}
+
 
 def load_data():
     df = pd.read_csv(MERGED_DATA_PATH)
     df['date'] = pd.to_datetime(df['date'])
+    df.rename(columns=RENAME_MAP, inplace=True)
 
-    # שינוי שמות עמודות לסטנדרט אחיד
-    rename_map = {
-        'sentiment_score': 'sentiment',
-        'macro_score': 'macro',
-        'bonds_score': 'bonds',
-        'futures_vix_score': 'futures_vix',
-        'sectors_score': 'sectors',
-        'mes_score': 'mes'
-    }
-    df.rename(columns=rename_map, inplace=True)
+    if not all(c in df.columns for c in FEATURE_COLS + ['direction']):
+        missing = [c for c in FEATURE_COLS + ['direction'] if c not in df.columns]
+        raise ValueError(f"Missing required columns: {missing}")
 
-    feature_cols = ['sentiment', 'macro', 'bonds', 'futures_vix', 'sectors', 'mes']
-    if not all(col in df.columns for col in feature_cols + ['direction']):
-        raise ValueError("❌ עמודות חובה חסרות בקובץ הקלט. נדרש לכלול את: " + ', '.join(feature_cols + ['direction']))
+    # Handle all direction formats: "UP"/"DOWN"/"NEUTRAL", "1"/"-1"/"0", 1/-1/0
+    _str_map = {"UP": 1, "DOWN": -1, "NEUTRAL": 0}
 
-    # המרת תוצאה למספר
-    df['label'] = df['direction'].map({"UP": 1, "DOWN": -1, "NEUTRAL": 0})
-    X = df[feature_cols]
+    def _to_label(val):
+        if isinstance(val, str):
+            if val in _str_map:
+                return _str_map[val]
+            try:
+                v = float(val)
+                return 1 if v > 0.3 else -1 if v < -0.3 else 0
+            except (ValueError, TypeError):
+                return None
+        try:
+            v = float(val)
+            return 1 if v > 0.3 else -1 if v < -0.3 else 0
+        except (ValueError, TypeError):
+            return None
+
+    df['label'] = df['direction'].apply(_to_label)
+
+    df = df.dropna(subset=['label'] + FEATURE_COLS)
+    df['label'] = df['label'].astype(int)
+
+    X = df[FEATURE_COLS]
     y = df['label']
 
     return train_test_split(X, y, test_size=0.2, random_state=42) if len(df) > 3 else (X, X, y, y)
+
 
 def train_model():
     X_train, X_test, y_train, y_test = load_data()
@@ -44,46 +63,30 @@ def train_model():
 
     if len(X_test) > 0:
         y_pred = model.predict(X_test)
-        print("\n📊 Evaluation Report:")
+        print("\nEvaluation Report:")
         print(classification_report(y_test, y_pred, zero_division=0))
 
     joblib.dump(model, MODEL_PATH)
-    print(f"✅ Model saved to {MODEL_PATH}")
+    print(f"Model saved to {MODEL_PATH}")
     return model
 
-def predict_today(model):
-    df = pd.read_csv(MERGED_DATA_PATH)
-    df.rename(columns={
-        'sentiment_score': 'sentiment',
-        'macro_score': 'macro',
-        'bonds_score': 'bonds',
-        'futures_vix_score': 'futures_vix',
-        'sectors_score': 'sectors',
-        'mes_score': 'mes'
-    }, inplace=True)
 
+def predict_today(model) -> int:
+    df = pd.read_csv(MERGED_DATA_PATH)
+    df.rename(columns=RENAME_MAP, inplace=True)
     df['date'] = pd.to_datetime(df['date'])
     latest = df.sort_values("date").iloc[-1]
-
-    feature_cols = ['sentiment', 'macro', 'bonds', 'futures_vix', 'sectors', 'mes']
-    features = pd.DataFrame([latest[feature_cols].values], columns=feature_cols)
-
-    pred = model.predict(features)[0]
-
-    print("\n🎯 Today's Forecast:")
-    if pred == 1:
-        print("✅ LONG")
-    elif pred == -1:
-        print("❌ SHORT")
-    else:
-        print("🔒 NEUTRAL")
+    features = pd.DataFrame([latest[FEATURE_COLS].values], columns=FEATURE_COLS)
+    pred = int(model.predict(features)[0])
+    labels = {1: "LONG", -1: "SHORT", 0: "NEUTRAL"}
+    print(f"\nToday's Forecast: {labels.get(pred, str(pred))}")
+    return pred
 
 
 def main():
     if not os.path.exists(MERGED_DATA_PATH):
-        print("❌ Data not found. Run merge_scores_mes.py first.")
+        print("Data not found. Run merge_scores_mes.py first.")
         return
-
     model = train_model()
     predict_today(model)
 

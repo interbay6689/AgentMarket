@@ -1,2 +1,3 @@
-date,final_score,bias,sentiment_score,macro_score,bonds_score,futures_vix_score,mes_score,sectors_score,open,close,direction,long_short_ratio
-2025-07-07,57,🔒 NEUTRAL,60,67,65,22,62,65,6307.25,6295.75,DOWN,
+date,final_score,bias,sentiment_score,macro_score,bonds_score,futures_vix_score,mes_score,sectors_score,open,close,direction,long_short_ratio,daily_change_pct
+2025-07-07,57,🔒 NEUTRAL,60,67,65,22,62,65,6307.25,6295.75,DOWN,,
+2026-06-01,51,🔒 NEUTRAL,50,50,50,50,56,50,6263.5,6277.25,0,,0.22

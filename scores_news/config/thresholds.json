@@ -1,4 +1,6 @@
 {
   "long": 65,
-  "short": 45
+  "short": 45,
+  "yield_inversion": 0.5,
+  "vix_spike": 10.0
 }

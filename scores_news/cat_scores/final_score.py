@@ -221,40 +221,38 @@ def determine_market_bias(score: int, thresholds_path: Path | None = None) -> st
     return "🔒 NEUTRAL"
 
 def save_scores_to_log(scores: dict, final_score: int, bias: str, path: Path | None = None) -> None:
-    """שומר את תוצאות היום לקובץ score_log.csv.
-
-    אם לא סופק נתיב, ישתמש בנתיב תחת CONFIG_DIR. יוצר את הקובץ אם אינו קיים.
-    """
+    """Save today's scores to score_log.csv, updating existing row for same date."""
     log_path = Path(path) if path else CONFIG_DIR / "score_log.csv"
     date_str = datetime.now().strftime("%Y-%m-%d")
-    # הכנת שורה עם הערכים
-    row: dict[str, object] = {
-        "date": date_str,
-        "final_score": final_score,
-        "bias": bias,
-    }
-    # אם חסר sectors – הוסף ברירת מחדל
+
     if "sectors" not in scores:
-        scores["sectors"] = {
-            "score": 50,
-            "explanation": "נתון לא זמין – ברירת מחדל",
-        }
-    # הוספת שדות
+        scores["sectors"] = {"score": 50, "explanation": "default"}
+
+    row: dict[str, object] = {"date": date_str, "final_score": final_score, "bias": bias}
     for cat, result in scores.items():
-        score_value = result.get("score")
+        val = result.get("score")
         if cat in {"daily_change_pct", "open", "close", "direction", "long_short_ratio"}:
-            row[cat] = score_value
+            row[cat] = val
         else:
-            row[f"{cat}_score"] = score_value
-    # כתיבה לקובץ
-    file_exists = log_path.exists()
+            row[f"{cat}_score"] = val
+
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(log_path, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=row.keys())
-        if not file_exists:
-            writer.writeheader()
-        writer.writerow(row)
-    print(f"💾 נשמר ל־score_log.csv ({log_path})")
+
+    # Load existing, normalise schema, replace today's row, rewrite atomically
+    if log_path.exists():
+        existing = pd.read_csv(log_path)
+        # Unify columns: add any new columns the current row has
+        for col in row:
+            if col not in existing.columns:
+                existing[col] = None
+        # Drop today's old entries
+        existing = existing[existing["date"].astype(str) != date_str]
+        updated = pd.concat([existing, pd.DataFrame([row])], ignore_index=True)
+    else:
+        updated = pd.DataFrame([row])
+
+    updated.to_csv(log_path, index=False)
+    print(f"Saved score_log.csv ({log_path})")
 
 
 

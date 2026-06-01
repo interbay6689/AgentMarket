@@ -46,16 +46,21 @@ def fetch_futures_news():
 
 
 def calculate_futures_score(df: pd.DataFrame) -> tuple[int, str]:
+    if df.empty:
+        return 50, "No futures/VIX data available"
     articles = df.to_dict(orient="records")
     enriched = analyze_articles(articles)
     df_enriched = pd.DataFrame(enriched)
+
+    if df_enriched.empty or "sentiment_label" not in df_enriched.columns:
+        return 50, "No futures articles analyzed"
 
     pos = (df_enriched["sentiment_label"] == "positive").sum()
     neg = (df_enriched["sentiment_label"] == "negative").sum()
     total = pos + neg
 
     if total == 0:
-        return 50, "🔒 אין מספיק מידע רלוונטי"
+        return 50, "No relevant futures news"
 
     score = round(pos / total * 100)
     explanation = f"✅ חוזים חיוביים: {pos}, ❌ שליליים: {neg}, סה״כ: {total}"
