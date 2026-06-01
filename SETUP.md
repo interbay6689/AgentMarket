@@ -29,10 +29,16 @@
 
 ---
 
-## Installation — Windows
+## Installation — Windows (הדרך המהירה)
+
+**לחץ פעמיים על `install.bat`** — הכל יתקין אוטומטית.
+
+אם מעדיף ידנית:
 
 ```powershell
-# 1. חלץ את ה-zip ופתח את התיקייה
+# 1. חלץ את ה-zip — חשוב: תיקיית הפרויקט חייבת להיות AgentMarket\
+#    אם GitHub יצר תת-תיקייה כפולה כמו AgentMarket-main\AgentMarket-main\
+#    — היכנס לתיקייה הפנימית.
 cd C:\path\to\AgentMarket
 
 # 2. צור virtual environment
@@ -41,8 +47,8 @@ python -m venv venv
 # 3. הפעל את הסביבה
 venv\Scripts\activate
 
-# 4. התקן את כל התלויות
-pip install -r market_dashboard/requirements.txt
+# 4. התקן את כל התלויות (requirements.txt ברמת root)
+pip install -r requirements.txt
 ```
 
 ## Installation — Mac / Linux
@@ -51,7 +57,7 @@ pip install -r market_dashboard/requirements.txt
 cd /path/to/AgentMarket
 python3 -m venv venv
 source venv/bin/activate
-pip install -r market_dashboard/requirements.txt
+pip install -r requirements.txt
 ```
 
 ---
@@ -160,8 +166,11 @@ AgentMarket/
 
 | שגיאה | סיבה | תיקון |
 |-------|------|-------|
+| `ModuleNotFoundError: feedparser` | חבילות לא הותקנו | הרץ `install.bat` או: `pip install -r requirements.txt` |
+| `ModuleNotFoundError: yaml` | חבילות לא הותקנו | הרץ `install.bat` או: `pip install -r requirements.txt` |
 | `ModuleNotFoundError: streamlit` | venv לא מופעל | `venv\Scripts\activate` |
 | `ModuleNotFoundError: AgentMarket` | import path שגוי | הרץ מ-`AgentMarket/` (לא מ-`pages/`) |
+| שתי תיקיות כפולות בzip | GitHub מייצר `Repo-branch\Repo-branch\` | היכנס לתיקייה הפנימית |
 | `No data available` / `yfinance empty` | חסימת Yahoo Finance | בדוק חיבור אינטרנט, נסה שוב אחרי כמה דקות |
 | `OpenAI API error: 401` | API key חסר/שגוי | ודא שיש קובץ `.env` עם `OPENAI_API_KEY=...` |
 | `score_log.csv not found` | final_score.py לא הורץ | הרץ `python scores_news/cat_scores/final_score.py` |
