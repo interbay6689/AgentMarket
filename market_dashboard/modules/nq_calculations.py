@@ -497,6 +497,175 @@ def calculate_atr_range_consumed(df_daily: pd.DataFrame, df_5m: pd.DataFrame,
         return {}
 
 
+def get_htf_bias(df_daily: pd.DataFrame, df_hourly: pd.DataFrame = None) -> dict:
+    """
+    Higher Timeframe bias from Daily structure (HH/HL vs LH/LL) + SMA20 + 1H trend slope.
+    Returns dict: bias ('bullish'/'bearish'/'neutral'), strength (0-100).
+    """
+    pts = 0
+    max_pts = 0
+
+    if len(df_daily) >= 10:
+        d = df_daily.tail(10)
+        highs = d["high"].values.astype(float)
+        lows  = d["low"].values.astype(float)
+        hh = sum(1 for i in range(1, len(highs)) if highs[i] > highs[i - 1])
+        hl = sum(1 for i in range(1, len(lows))  if lows[i]  > lows[i - 1])
+        lh = sum(1 for i in range(1, len(highs)) if highs[i] < highs[i - 1])
+        ll = sum(1 for i in range(1, len(lows))  if lows[i]  < lows[i - 1])
+        bull = hh + hl
+        total = bull + lh + ll
+        max_pts += 40
+        if total > 0:
+            pts += int(40 * bull / total)
+
+    if len(df_daily) >= 20:
+        sma20 = float(df_daily["close"].tail(20).mean())
+        cur   = float(df_daily["close"].iloc[-1])
+        max_pts += 20
+        if cur > sma20:
+            pts += 20
+
+    if df_hourly is not None and len(df_hourly) >= 24:
+        close = df_hourly["close"].tail(24).values.astype(float)
+        slope = np.polyfit(np.arange(len(close)), close, 1)[0]
+        max_pts += 40
+        if slope > 0:
+            pts += int(min(40, slope / max(close[-1], 1) * 10_000))
+
+    if max_pts == 0:
+        return {"bias": "neutral", "strength": 50}
+
+    strength = int(pts / max_pts * 100)
+    bias = "bullish" if strength >= 60 else ("bearish" if strength <= 40 else "neutral")
+    return {"bias": bias, "strength": strength}
+
+
+def get_support_resistance_zones(
+    df_daily: pd.DataFrame,
+    df_hourly: pd.DataFrame = None,
+    df_15m: pd.DataFrame = None,
+    current_price: float = None,
+    n_zones: int = 8,
+) -> list:
+    """
+    Combines Key Levels, Order Blocks (daily + 15m), and FVGs (15m) into scored Zone objects.
+    Each zone: price_low, price_high, midpoint, zone_type, score (0-10), components, dist_pts.
+    """
+    clusters: dict = {}  # keyed by rounded midpoint (10-pt grid) to merge nearby levels
+
+    def _add(low: float, high: float, tag: str):
+        mid = round(((low + high) / 2) / 10) * 10  # snap to nearest 10-pt grid
+        if mid in clusters:
+            if tag not in clusters[mid]["components"]:
+                clusters[mid]["components"].append(tag)
+            clusters[mid]["price_low"]  = min(clusters[mid]["price_low"], low)
+            clusters[mid]["price_high"] = max(clusters[mid]["price_high"], high)
+        else:
+            clusters[mid] = {"price_low": low, "price_high": high, "components": [tag]}
+
+    # Key levels
+    try:
+        kl = calculate_key_levels(df_daily, df_hourly)
+        for name, val in kl.items():
+            if isinstance(val, float) and not np.isnan(val):
+                _add(val - 4, val + 4, name.upper())
+    except Exception:
+        pass
+
+    # Order Blocks — daily
+    if len(df_daily) >= 10:
+        try:
+            obs = detect_order_blocks(df_daily.reset_index(drop=True))
+            if not obs.empty:
+                for _, ob in obs[obs["valid"] == True].iterrows():
+                    _add(float(ob["low"]), float(ob["high"]), "OB_D")
+        except Exception:
+            pass
+
+    # Order Blocks — 15m (last 10 valid)
+    if df_15m is not None and len(df_15m) >= 20:
+        try:
+            obs15 = detect_order_blocks(df_15m.reset_index(drop=True))
+            if not obs15.empty:
+                for _, ob in obs15[obs15["valid"] == True].tail(10).iterrows():
+                    _add(float(ob["low"]), float(ob["high"]), "OB_15m")
+        except Exception:
+            pass
+
+    # FVG — 15m (last 8)
+    if df_15m is not None and len(df_15m) >= 3:
+        try:
+            fvgs = detect_fvg(df_15m.reset_index(drop=True))
+            if not fvgs.empty:
+                for _, fvg in fvgs.tail(8).iterrows():
+                    _add(float(fvg["bottom"]), float(fvg["top"]), "FVG_15m")
+        except Exception:
+            pass
+
+    # Score each cluster
+    KEY_LEVEL_TAGS = {"PDH", "PDL", "PDC", "POC_20D", "POC_5D",
+                      "WEEKLY_HIGH", "WEEKLY_LOW", "OVERNIGHT_HIGH", "OVERNIGHT_LOW",
+                      "VAL_20D", "VAH_20D"}
+    result = []
+    for mid_snap, z in clusters.items():
+        comps  = z["components"]
+        raw    = len(comps)
+        has_ob = any("OB" in c for c in comps)
+        has_kl = any(c in KEY_LEVEL_TAGS for c in comps)
+        has_fvg = any("FVG" in c for c in comps)
+        if has_ob and has_kl:
+            raw += 2
+        if has_ob and has_fvg:
+            raw += 1
+
+        midpoint = (z["price_low"] + z["price_high"]) / 2
+        if current_price is not None:
+            zone_type = "support" if midpoint < current_price else "resistance"
+            dist_pts  = abs(midpoint - current_price)
+        else:
+            zone_type = "unknown"
+            dist_pts  = 0.0
+
+        result.append({
+            "price_low":  round(z["price_low"],  1),
+            "price_high": round(z["price_high"], 1),
+            "midpoint":   round(midpoint, 1),
+            "zone_type":  zone_type,
+            "score":      min(10, raw * 2),
+            "components": comps,
+            "dist_pts":   round(dist_pts, 1),
+        })
+
+    result.sort(key=lambda x: x["dist_pts"])
+    return result[:n_zones]
+
+
+def calculate_dynamic_stop(
+    df_daily: pd.DataFrame,
+    direction: str,
+    entry: float,
+    atr_period: int = 14,
+    atr_mult: float = 1.5,
+) -> float:
+    """ATR(14) × atr_mult dynamic stop. Falls back to 15-pt fixed if data is insufficient."""
+    try:
+        if len(df_daily) >= atr_period + 1:
+            d = df_daily.copy().reset_index(drop=True)
+            d["prev_close"] = d["close"].shift(1)
+            d["tr"] = (
+                pd.concat([d["high"], d["prev_close"]], axis=1).max(axis=1)
+                - pd.concat([d["low"],  d["prev_close"]], axis=1).min(axis=1)
+            )
+            atr = float(d["tr"].rolling(atr_period).mean().iloc[-1])
+            risk = atr * atr_mult
+            return round((entry - risk) if direction == "LONG" else (entry + risk), 2)
+    except Exception:
+        pass
+    fallback = 15.0
+    return round((entry - fallback) if direction == "LONG" else (entry + fallback), 2)
+
+
 def session_win_rates(df_hourly: pd.DataFrame) -> pd.DataFrame:
     if df_hourly.empty:
         return pd.DataFrame()

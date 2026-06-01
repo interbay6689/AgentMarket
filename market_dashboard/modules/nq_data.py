@@ -103,6 +103,23 @@ def get_todays_nq_data() -> pd.DataFrame:
     return df[["datetime", "datetime_et", "datetime_il", "open", "high", "low", "close", "volume"]].dropna()
 
 
+def fetch_nq_15m(days_back: int = 5) -> pd.DataFrame:
+    """15-minute NQ data for MTF analysis (yfinance supports ≤60d for 15m)."""
+    df = yf.download("NQ=F", period=f"{days_back}d", interval="15m", auto_adjust=True, progress=False)
+    if df.empty:
+        return pd.DataFrame()
+    df = _normalize_columns(df)
+    df = df.reset_index()
+    col0 = df.columns[0]
+    df = df.rename(columns={col0: "datetime"})
+    df["datetime"] = pd.to_datetime(df["datetime"])
+    if df["datetime"].dt.tz is None:
+        df["datetime"] = df["datetime"].dt.tz_localize("UTC")
+    df["datetime_et"] = df["datetime"].dt.tz_convert(ET_TZ)
+    df["datetime_il"] = df["datetime"].dt.tz_convert(IL_TZ)
+    return df[["datetime", "datetime_et", "datetime_il", "open", "high", "low", "close", "volume"]].dropna()
+
+
 def fetch_correlated_assets() -> dict:
     symbols = {"VIX": "^VIX", "DXY": "DX-Y.NYB", "TNX": "^TNX", "ES": "ES=F", "Gold": "GC=F"}
     result = {}
