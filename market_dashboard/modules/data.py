@@ -1,9 +1,9 @@
 import pandas as pd
 from pathlib import Path
 from datetime import datetime
+import streamlit as st
 from modules.config import load_config
 
-# ייבוא פונקציות חישוב מתוך scores_news
 from scores_news.cat_scores.bonds_score import (
     fetch_treasury_yield_xml,
     extract_yields_from_treasury_xml,
@@ -30,6 +30,7 @@ def recommend_arrow(score: float) -> str:
     return "➖"
 
 
+@st.cache_data(ttl=300)
 def load_scores() -> pd.DataFrame:
     """
     Compute scores for each category using scores_news functions
@@ -83,6 +84,7 @@ def load_scores() -> pd.DataFrame:
 
 
 
+@st.cache_data(ttl=300)
 def load_time_series() -> pd.DataFrame:
     """
     Load historical time series from data/time_series.json else create dummy
@@ -97,6 +99,7 @@ def load_time_series() -> pd.DataFrame:
     return df
 
 
+@st.cache_data(ttl=300)
 def load_significant_changes(category: str) -> pd.DataFrame:
     """
     Load significant changes from data/{category}_changes.json
