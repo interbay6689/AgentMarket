@@ -40,6 +40,7 @@ PAGE_MODULES = {
     "🎯 Signals":      "trade_signals",
     "📊 Dashboard":    "dashboard",
     "📈 NQ Analysis":  "nq_order_flow",
+    "📉 Backtest":     "backtesting",
     "🧠 Learning":     "ml_learning",
     "📓 Journal":      "trade_journal",
     "🤖 Agents":       "agents_dashboard",

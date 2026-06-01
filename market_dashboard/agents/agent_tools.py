@@ -380,6 +380,36 @@ def get_config_history(n: int = 20) -> list:
     return get_change_history(n)
 
 
+def run_backtest_sweep(param: str, test_values: list, lookback_days: int = 180) -> dict:
+    """
+    Backtest a single parameter across multiple values against historical NQ data.
+    Returns ranked results (best profit_factor first) so Config Optimizer can
+    compare proposed vs current before applying any change.
+    """
+    try:
+        from modules.nq_data import load_nq_daily_cache
+        from modules.backtest_engine import sweep_parameter, DEFAULT_PARAMS
+
+        df = load_nq_daily_cache()
+        if df.empty:
+            return {"error": "no_daily_data"}
+
+        if not isinstance(df.index, pd.DatetimeIndex):
+            df.index = pd.to_datetime(df.index, errors="coerce")
+        end   = df.index.max()
+        start = end - pd.Timedelta(days=lookback_days)
+        df    = df[df.index >= start].copy()
+
+        results = sweep_parameter(df, param, [float(v) for v in test_values], DEFAULT_PARAMS)
+        return {
+            "param":   param,
+            "results": results[:8],
+            "best":    results[0] if results else {},
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ─── Tool dispatcher ──────────────────────────────────────────────────────────
 
 TOOL_REGISTRY: dict[str, callable] = {
@@ -399,6 +429,7 @@ TOOL_REGISTRY: dict[str, callable] = {
     "run_dry_run":                 run_dry_run,
     "revert_change":               revert_change,
     "get_config_history":          get_config_history,
+    "run_backtest_sweep":          run_backtest_sweep,
 }
 
 
@@ -572,6 +603,38 @@ TOOL_SCHEMAS = [
             "type": "object",
             "properties": {"n": {"type": "integer", "description": "Number of records (default 20)"}},
             "required": [],
+        },
+    },
+    {
+        "name": "run_backtest_sweep",
+        "description": (
+            "Backtest a parameter across multiple values against historical NQ daily OHLCV. "
+            "Returns ranked results (best profit_factor first). "
+            "Use BEFORE applying any parameter change — confirms the new value outperforms current. "
+            "Example: test signal.min_confidence at [55,60,65,70] over last 180 days."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "param": {
+                    "type": "string",
+                    "enum": [
+                        "signal.min_confidence", "signal.min_zone_score",
+                        "signal.min_rr", "signal.min_margin", "risk.atr_mult",
+                    ],
+                    "description": "Parameter to sweep",
+                },
+                "test_values": {
+                    "type": "array",
+                    "items": {"type": "number"},
+                    "description": "List of values to test (2-8 values recommended)",
+                },
+                "lookback_days": {
+                    "type": "integer",
+                    "description": "Days of history to use (default 180, max 730)",
+                },
+            },
+            "required": ["param", "test_values"],
         },
     },
 ]

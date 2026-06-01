@@ -48,6 +48,7 @@ _ALLOWED_TOOLS = {
     "read_fundamental_state",
     "read_statistical_edge",
     "run_dry_run",
+    "run_backtest_sweep",
     "update_fundamental_weights",
     "update_entry_filter",
     "update_agent_config",
@@ -66,6 +67,16 @@ You run once per day (07:00 Israel time) and adjust system parameters based on h
 6. ALWAYS dry-run first (run_dry_run) — never skip this step
 7. If dry-run is valid → apply changes with clear reasoning
 8. If dry-run rejects → do NOT apply, explain why
+
+## Mandatory workflow (follow this order)
+1. read_all_configs → know current state
+2. read_trade_log_summary → performance data
+3. read_insights_log → Analysis Agent recommendations
+4. get_config_history → avoid reverting recent changes
+5. For each candidate change: **run_backtest_sweep FIRST** — confirm the new value
+   outperforms current on historical data before applying anything
+6. run_dry_run → validate the change passes safety checks
+7. If both backtest + dry_run pass → apply the change
 
 ## What you can change
 - weights.sentiment / macro / bonds / vix / sectors / mes  (sum must = 1.0)
