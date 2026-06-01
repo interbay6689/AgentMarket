@@ -19,6 +19,21 @@ from modules.nq_data import get_todays_nq_data, load_nq_daily_cache, current_ses
 from modules.nq_calculations import cumulative_delta, detect_fvg
 from modules.trade_tracker import log_trade, load_trade_settings, load_trade_log, summary_stats
 
+import json
+from pathlib import Path as _Path
+_LOGS = _Path(__file__).resolve().parents[1] / "logs"
+
+
+def _load_agent_proposals(n: int = 3) -> list:
+    path = _LOGS / "agent_proposals.json"
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text())
+        return data[-n:] if isinstance(data, list) else []
+    except Exception:
+        return []
+
 
 @st.cache_data(ttl=60)
 def _get_signal():
@@ -305,15 +320,21 @@ def _render_key_levels_table(sig: dict):
 def app():
     st.title("🎯 Trade Signals — NQ")
 
-    # Auto-refresh toggle
+    # Auto-refresh — non-blocking JS timer (no sleep)
     col_ref, col_sess = st.columns([3, 1])
     with col_ref:
-        auto_refresh = st.checkbox("Auto-refresh (60s)", value=False)
-    if auto_refresh:
-        import time
-        time.sleep(60)
-        st.cache_data.clear()
-        st.rerun()
+        refresh_sec = st.select_slider(
+            "Auto-refresh",
+            options=[0, 30, 60, 120, 300],
+            value=60,
+            format_func=lambda x: "Off" if x == 0 else f"{x}s",
+        )
+    if refresh_sec > 0:
+        try:
+            from streamlit_autorefresh import st_autorefresh
+            st_autorefresh(interval=refresh_sec * 1000, key="sig_refresh")
+        except ImportError:
+            st.caption("install streamlit-autorefresh for non-blocking refresh")
 
     # Session status
     session = current_session_israel()
@@ -386,6 +407,68 @@ def app():
     # ── Key levels ──────────────────────────────────────────────
     with st.expander("📊 Key Levels", expanded=False):
         _render_key_levels_table(sig)
+
+    # ── AI Agent Proposals ──────────────────────────────────────
+    st.divider()
+    st.markdown("### 🤖 AI Signal Agent — הצעות אחרונות")
+
+    proposals = _load_agent_proposals(3)
+    if not proposals:
+        st.info(
+            "Signal Agent טרם יצר הצעות. "
+            "לחץ **▶ הפעל עכשיו** כדי להריץ אותו ידנית, "
+            "או הפעל את ה-Orchestrator מהטאב 🤖 Agents.",
+        )
+    else:
+        for prop in reversed(proposals):
+            p      = prop.get("proposal", prop)  # support both wrapped and flat
+            ts     = str(prop.get("logged_at", ""))[:16]
+            direc  = p.get("direction", "?")
+            conf   = p.get("confidence", 0)
+            entry  = p.get("entry", "?")
+            stop   = p.get("stop", "?")
+            target = p.get("target", "?")
+            rr     = p.get("rr", "?")
+            color  = {"LONG": "#00c853", "SHORT": "#d50000"}.get(direc, "#9e9e9e")
+
+            with st.expander(
+                f"{'🟢' if direc=='LONG' else '🔴'} {direc} — "
+                f"conf: {conf}/100 — R:R {rr} — {ts}",
+                expanded=(prop is proposals[-1]),
+            ):
+                cols = st.columns(4)
+                cols[0].metric("כיוון", direc)
+                cols[1].metric("כניסה", f"{entry:,.1f}" if isinstance(entry, float) else entry)
+                cols[2].metric("סטופ", f"{stop:,.1f}" if isinstance(stop, float) else stop)
+                cols[3].metric("יעד", f"{target:,.1f}" if isinstance(target, float) else target)
+
+                if p.get("reasoning"):
+                    st.markdown(f"**נימוק:** {p['reasoning']}")
+                factors = p.get("key_factors", [])
+                if factors:
+                    st.markdown("**גורמים מרכזיים:** " + " · ".join(f"`{f}`" for f in factors))
+                if p.get("session"):
+                    st.caption(f"Session: {p['session']} | HTF: {p.get('htf_bias','?')}")
+
+    # Run Signal Agent button
+    run_col, _ = st.columns([1, 3])
+    if run_col.button("▶ הפעל Signal Agent עכשיו", key="run_sig_agent"):
+        with st.spinner("מריץ Indicators + Signal Agent..."):
+            try:
+                from agents import orchestrator
+                result = orchestrator.run_once("indicators_signal")
+                outcome = result.get("outcome", "?")
+                if result.get("outcome") == "proposal":
+                    st.success("✅ הצעה חדשה נוצרה! רענן את הדף.")
+                elif result.get("outcome") == "skipped":
+                    st.warning(f"⏭️ Signal Agent: {result.get('reason','no signal')}")
+                elif "error" in result:
+                    st.error(f"שגיאה: {result.get('error', result.get('reason','?'))}")
+                else:
+                    st.info(f"תוצאה: {outcome}")
+            except ImportError:
+                st.error("anthropic לא מותקן — הרץ: pip install anthropic")
+        st.rerun()
 
     # ── Score log spark ─────────────────────────────────────────
     with st.expander("📈 Score History (last 20 days)", expanded=False):
