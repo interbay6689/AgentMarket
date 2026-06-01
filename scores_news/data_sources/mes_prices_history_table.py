@@ -19,48 +19,48 @@ def enrich_mes_data(df):
 
 def build_mes_csv(file_path="MES_data.csv", start_date="2025-01-01"):
     end_date = datetime.now().strftime("%Y-%m-%d")
-    print("🔄 מוריד היסטוריית MES מ־Yahoo...")
+    print("Downloading MES history from Yahoo...")
     df = yf.download("MES=F", start=start_date, end=end_date, progress=False)
     df.reset_index(inplace=True)
 
-    # ביטול MultiIndex אם קיים
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
-    # בדיקה שעמודות חיוניות קיימות
+    df.columns = [c.lower() for c in df.columns]
+
     required_columns = ['date', 'open', 'close']
     for col in required_columns:
         if col not in df.columns:
-            raise Exception(f"❌ העמודה '{col}' חסרה בנתונים שנמשכו מ־yfinance")
+            raise Exception(f"Missing column '{col}' in yfinance data. Got: {df.columns.tolist()}")
 
     df['date'] = pd.to_datetime(df['date']).dt.date
     df = df[['date', 'open', 'close']].dropna()
     df = enrich_mes_data(df)
     df.to_csv(file_path, index=False)
-    print(f"✅ נשמרו {len(df)} שורות לקובץ {file_path}")
+    print(f"Saved {len(df)} rows to {file_path}")
     return df
 
 
 def update_mes_csv(file_path="MES_data.csv"):
     if not os.path.exists(file_path):
-        raise FileNotFoundError("❌ הקובץ MES_data.csv לא קיים. הפעל קודם את build_mes_csv()")
+        raise FileNotFoundError("MES_data.csv not found. Run build_mes_csv() first.")
 
     existing_df = pd.read_csv(file_path)
     if existing_df.empty or 'date' not in existing_df.columns:
-        print("⚠️ הקובץ קיים אך ריק או פגום — בונה אותו מחדש...")
+        print("CSV empty or corrupt, rebuilding...")
         return build_mes_csv(file_path)
 
     existing_df['date'] = pd.to_datetime(existing_df['date'], errors='coerce').dt.date
     existing_df.dropna(subset=['date'], inplace=True)
     if existing_df.empty:
-        print("⚠️ כל התאריכים לא תקינים — בונה מחדש...")
+        print("All dates invalid, rebuilding...")
         return build_mes_csv(file_path)
 
     last_date = existing_df['date'].max()
     today = datetime.now().date()
 
     if last_date >= today:
-        print("📅 הנתונים כבר מעודכנים עד היום.")
+        print("Data already up to date.")
         return existing_df
 
     new_df = yf.download("MES=F", start=str(last_date), end=str(today + pd.Timedelta(days=1)), progress=False)
@@ -69,16 +69,16 @@ def update_mes_csv(file_path="MES_data.csv"):
     if isinstance(new_df.columns, pd.MultiIndex):
         new_df.columns = new_df.columns.get_level_values(0)
 
-    if new_df.empty:
-        print("⚠️ לא התקבלו נתונים חדשים מ־Yahoo Finance.")
-        return existing_df
+    new_df.columns = [c.lower() for c in new_df.columns]
 
-    print("📋 עמודות שהתקבלו מהנתונים החדשים:", new_df.columns.tolist())
+    if new_df.empty:
+        print("No new data from Yahoo Finance.")
+        return existing_df
 
     required_columns = ['date', 'open', 'close']
     for col in required_columns:
         if col not in new_df.columns:
-            raise Exception(f"❌ העמודה '{col}' חסרה בנתונים שהתקבלו מ־yfinance")
+            raise Exception(f"Missing column '{col}' in yfinance data. Got: {new_df.columns.tolist()}")
 
     new_df['date'] = pd.to_datetime(new_df['date']).dt.date
     new_df = new_df[['date', 'open', 'close']].dropna()
@@ -90,7 +90,7 @@ def update_mes_csv(file_path="MES_data.csv"):
     updated_df.sort_values('date', inplace=True)
     updated_df.to_csv(file_path, index=False)
 
-    print(f"✅ נוסף {len(new_df)} רשומות חדשות. סה״כ: {len(updated_df)}")
+    print(f"Added {len(new_df)} new rows. Total: {len(updated_df)}")
     return updated_df
 
 # הפעלה
