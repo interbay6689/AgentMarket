@@ -25,6 +25,35 @@ from modules.backtest_engine import (
 from modules.backtest_metrics import compare_params, equity_curve_df
 
 IL_TZ = pytz.timezone("Asia/Jerusalem")
+_EPOCH = pd.Timestamp("1970-01-02")  # anything at/before this is a bad parse
+
+
+def _ensure_datetime_index(df: pd.DataFrame) -> pd.DataFrame:
+    """Convert df.index to DatetimeIndex if it isn't already."""
+    if not isinstance(df.index, pd.DatetimeIndex):
+        df = df.copy()
+        df.index = pd.to_datetime(df.index, errors="coerce")
+    return df
+
+
+def _safe_date_range(df: pd.DataFrame) -> tuple:
+    """
+    Return (min_date, max_date) as datetime.date objects.
+    Falls back to (2023-01-01, today) if the index has bad timestamps.
+    """
+    fallback_min = datetime(2023, 1, 1).date()
+    fallback_max = datetime.now().date()
+    try:
+        df2 = _ensure_datetime_index(df)
+        ts_min = df2.index.min()
+        ts_max = df2.index.max()
+        mn = ts_min.date() if pd.notna(ts_min) and ts_min > _EPOCH else fallback_min
+        mx = ts_max.date() if pd.notna(ts_max) and ts_max > _EPOCH else fallback_max
+        if mn >= mx:
+            mn = fallback_min
+        return mn, mx
+    except Exception:
+        return fallback_min, fallback_max
 
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
@@ -122,8 +151,8 @@ def _tab_run_backtest() -> None:
         st.error("Insufficient daily data — load NQ data first (NQ Analysis page).")
         return
 
-    min_date = pd.Timestamp(df_daily.index.min()).date() if hasattr(df_daily.index, "min") else datetime(2023, 1, 1).date()
-    max_date = pd.Timestamp(df_daily.index.max()).date() if hasattr(df_daily.index, "max") else datetime.now().date()
+    df_daily   = _ensure_datetime_index(df_daily)
+    min_date, max_date = _safe_date_range(df_daily)
 
     # ── Parameter controls ───────────────────────────────────────────────────
     with st.expander("⚙️ Signal Parameters", expanded=True):
@@ -219,7 +248,7 @@ def _tab_parameter_sweep() -> None:
     st.subheader("Parameter Sweep")
     st.caption("Test multiple values of a single parameter and compare results.")
 
-    df_daily = load_nq_daily_cache()
+    df_daily = _ensure_datetime_index(load_nq_daily_cache())
     if df_daily.empty or len(df_daily) < 60:
         st.error("Insufficient daily data.")
         return
@@ -248,8 +277,9 @@ def _tab_parameter_sweep() -> None:
     base_params = DEFAULT_PARAMS.copy()
 
     if st.button("▶ Run Sweep", type="primary", key="btn_sweep"):
-        end_date   = df_daily.index.max() if hasattr(df_daily.index, "max") else None
-        start_date = pd.Timestamp(end_date) - pd.Timedelta(days=lookback) if end_date is not None else None
+        _, end_d_s = _safe_date_range(df_daily)
+        end_date   = pd.Timestamp(end_d_s)
+        start_date = end_date - pd.Timedelta(days=lookback)
 
         df_window = df_daily.copy()
         if start_date is not None:
@@ -324,7 +354,7 @@ def _tab_compare() -> None:
     st.subheader("Compare Two Parameter Sets")
     st.caption("Run baseline vs. proposed parameters side-by-side.")
 
-    df_daily = load_nq_daily_cache()
+    df_daily = _ensure_datetime_index(load_nq_daily_cache())
     if df_daily.empty:
         st.error("No daily data.")
         return
@@ -352,8 +382,9 @@ def _tab_compare() -> None:
         params_b = {"signal.min_confidence": b_conf, "signal.min_zone_score": b_zone,
                     "signal.min_rr": b_rr, "risk.atr_mult": b_atr, "signal.min_margin": 15}
 
-        end_date   = df_daily.index.max()
-        start_date = pd.Timestamp(end_date) - pd.Timedelta(days=lookback)
+        _, end_d_c = _safe_date_range(df_daily)
+        end_date   = pd.Timestamp(end_d_c)
+        start_date = end_date - pd.Timedelta(days=lookback)
         df_window  = df_daily[df_daily.index >= start_date].copy()
 
         with st.spinner("Running both backtests…"):
