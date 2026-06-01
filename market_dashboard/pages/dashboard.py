@@ -16,6 +16,8 @@ _MERGED_PATH = _ROOT / "scores_news" / "ml_model" / "merged_scores_mes.csv"
 _MODEL_PATH  = _ROOT / "scores_news" / "ml_model" / "model.pkl"
 _PERF_PATH   = _ROOT / "scores_news" / "ml_model" / "ml_performance_log.csv"
 _FINAL_SCORE = _ROOT / "scores_news" / "cat_scores" / "final_score.py"
+_MES_UPDATE  = _ROOT / "scores_news" / "data_sources" / "mes_prices_history_table.py"
+_RSS_FETCH   = _ROOT / "scores_news" / "data_sources" / "fetch_news_rss.py"
 
 
 @st.cache_data(ttl=300)
@@ -53,27 +55,78 @@ def _load_model_accuracy():
         return "לא זמין"
 
 
-def _run_final_score():
-    """מריץ final_score.py ומחזיר (success, output)."""
+def _make_env() -> dict:
+    import os
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(_ROOT) + os.pathsep + env.get("PYTHONPATH", "")
+    return env
+
+
+def _run_script(script: Path, env: dict) -> tuple[bool, str]:
     try:
-        result = subprocess.run(
-            ["python", str(_FINAL_SCORE)],
-            capture_output=True, text=True, timeout=120
+        r = subprocess.run(
+            ["python", str(script)],
+            capture_output=True, text=True, timeout=120,
+            cwd=str(_ROOT), env=env
         )
-        if result.returncode == 0:
-            st.cache_data.clear()
-            return True, result.stdout
-        return False, result.stderr or result.stdout
+        return r.returncode == 0, (r.stdout + r.stderr).strip()[:800]
     except subprocess.TimeoutExpired:
-        return False, "timeout — הניתוח לקח יותר מ-2 דקות"
+        return False, f"timeout (>2 min)"
     except Exception as e:
         return False, str(e)
 
 
+def _run_daily_pipeline() -> list[dict]:
+    """
+    Pipeline מלא ביום מסחר:
+      1. עדכון MES_data.csv    — נדרש לחישוב ציון MES
+      2. משיכת RSS סנטימנט    — אופציונלי (ברירת מחדל 50 אם נכשל)
+      3. final_score.py        — חישוב + כתיבה ל-score_log.csv
+    """
+    env = _make_env()
+    steps = [
+        {"name": "📈 עדכון MES_data.csv",        "script": _MES_UPDATE,  "required": True},
+        {"name": "📰 משיכת חדשות RSS לסנטימנט",  "script": _RSS_FETCH,   "required": False},
+        {"name": "🧮 חישוב ציונים (final_score)", "script": _FINAL_SCORE, "required": True},
+    ]
+    results = []
+    for step in steps:
+        ok, out = _run_script(step["script"], env)
+        results.append({"name": step["name"], "ok": ok,
+                        "required": step["required"], "output": out})
+        if not ok and step["required"]:
+            break
+    st.cache_data.clear()
+    return results
+
+
 def _data_age_days(df: pd.DataFrame) -> int:
-    """כמה ימים עברו מאז הנתון האחרון."""
     last = df["date"].max().date()
     return (date.today() - last).days
+
+
+def _show_run_button(label: str = "▶️ הרץ ניתוח יומי עכשיו"):
+    """כפתור שמריץ את ה-pipeline המלא ומציג תוצאה לכל שלב."""
+    if st.button(label, type="primary"):
+        results = []
+        with st.spinner("מריץ pipeline... (עד 5 דקות)"):
+            results = _run_daily_pipeline()
+
+        all_ok = True
+        for r in results:
+            icon = "✅" if r["ok"] else ("⚠️" if not r["required"] else "❌")
+            st.markdown(f"{icon} **{r['name']}**")
+            if r["output"]:
+                with st.expander("פלט", expanded=not r["ok"]):
+                    st.code(r["output"])
+            if not r["ok"] and r["required"]:
+                all_ok = False
+
+        if all_ok:
+            st.success("✅ הניתוח הסתיים — הנתונים עודכנו")
+            st.rerun()
+        else:
+            st.error("❌ שלב קריטי נכשל — בדוק את הפלט למעלה")
 
 
 def app():
@@ -96,35 +149,14 @@ def app():
         last_date = df_check["date"].max().date()
 
         if age >= 1:
-            # אזהרה ברורה
             st.warning(
                 f"⚠️ **נתוני הציונים אינם מעודכנים** — "
-                f"הנתון האחרון מתאריך **{last_date}** ({age} ימים לאחור). "
-                f"לחץ על הכפתור כדי להריץ ניתוח עכשיו."
+                f"הנתון האחרון מתאריך **{last_date}** ({age} ימים לאחור)."
             )
-            col_run, col_skip = st.columns([2, 5])
-            with col_run:
-                if st.button("▶️ הרץ ניתוח יומי עכשיו", type="primary", use_container_width=True):
-                    with st.spinner("מריץ ניתוח... (עד 2 דקות)"):
-                        ok, output = _run_final_score()
-                    if ok:
-                        st.success("✅ הניתוח הסתיים — הנתונים עודכנו")
-                        if output:
-                            st.code(output[:2000])
-                        st.rerun()
-                    else:
-                        st.error(f"❌ שגיאה בניתוח:\n{output[:1000]}")
+            _show_run_button()
     except FileNotFoundError:
-        st.error("❌ score_log.csv לא נמצא — הרץ ניתוח יומי תחילה.")
-        if st.button("▶️ הרץ ניתוח ראשוני", type="primary"):
-            with st.spinner("מריץ ניתוח ראשוני..."):
-                ok, output = _run_final_score()
-            if ok:
-                st.success("✅ הושלם")
-                st.cache_data.clear()
-                st.rerun()
-            else:
-                st.error(output)
+        st.error("❌ score_log.csv לא נמצא — הרץ ניתוח ראשוני.")
+        _show_run_button(label="▶️ הרץ ניתוח ראשוני")
         return
 
     # ─── תחזית ML ───────────────────────────────────────────────
