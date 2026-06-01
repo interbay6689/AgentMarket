@@ -17,6 +17,7 @@ from datetime import datetime
 from modules.signal_engine import generate_signal
 from modules.nq_data import get_todays_nq_data, load_nq_daily_cache, current_session_israel
 from modules.nq_calculations import cumulative_delta, detect_fvg
+from modules.trade_tracker import log_trade, load_trade_settings, load_trade_log, summary_stats
 
 
 @st.cache_data(ttl=60)
@@ -73,21 +74,26 @@ def _render_signal_card(sig: dict):
 
 
 def _render_rr_metrics(sig: dict):
-    entry = sig.get("entry")
-    stop = sig.get("stop")
-    target = sig.get("target")
-    rr = sig.get("rr")
+    entry        = sig.get("entry")
+    stop         = sig.get("stop")
+    target       = sig.get("target")
+    partial      = sig.get("partial_exit")
+    rr           = sig.get("rr")
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Entry", f"{entry:,.1f}" if entry else "—")
-    c2.metric("Stop", f"{stop:,.1f}" if stop else "—",
-              delta=f"{stop - entry:+.1f}" if stop and entry else None,
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    c1.metric("Entry",      f"{entry:,.1f}"   if entry   else "—")
+    c2.metric("Stop (ATR)", f"{stop:,.1f}"    if stop    else "—",
+              delta=f"{stop - entry:+.1f}"    if stop and entry else None,
               delta_color="inverse")
-    c3.metric("Target", f"{target:,.1f}" if target else "—",
-              delta=f"{target - entry:+.1f}" if target and entry else None)
+    c3.metric("Target",     f"{target:,.1f}"  if target  else "—",
+              delta=f"{target - entry:+.1f}"  if target and entry else None)
+    c4.metric("1R Partial", f"{partial:,.1f}" if partial else "—",
+              delta=f"{partial - entry:+.1f}" if partial and entry else None)
+    c5.metric("BE Level",   f"{entry:,.1f}"   if entry   else "—",
+              help="Move stop to entry after partial exit is hit")
     rr_str = f"{rr:.2f}" if rr else "—"
     rr_col = _rr_color(rr)
-    c4.markdown(
+    c6.markdown(
         f"""<div style="padding:8px 0;">
             <div style="font-size:.85em; color:#aaa;">R:R Ratio</div>
             <div style="font-size:1.8em; color:{rr_col}; font-weight:bold;">{rr_str}</div>
@@ -189,10 +195,14 @@ def _render_nq_chart(df_5m: pd.DataFrame, sig: dict):
                       annotation_text="ENTRY", annotation_position="right")
     if stop:
         fig.add_hline(y=stop, line_color="#ff5252", line_width=1.5, line_dash="dash",
-                      annotation_text="STOP", annotation_position="right")
+                      annotation_text="STOP (ATR)", annotation_position="right")
     if target:
         fig.add_hline(y=target, line_color="#69f0ae", line_width=1.5, line_dash="dash",
                       annotation_text="TARGET", annotation_position="right")
+    partial = sig.get("partial_exit")
+    if partial:
+        fig.add_hline(y=partial, line_color="#ffd600", line_width=1, line_dash="dot",
+                      annotation_text="1R Partial", annotation_position="right")
 
     # FVG zones
     try:
@@ -213,6 +223,70 @@ def _render_nq_chart(df_5m: pd.DataFrame, sig: dict):
         yaxis=dict(side="right"),
     )
     st.plotly_chart(fig, use_container_width=True)
+
+
+def _render_zone_map(sig: dict):
+    """Visual zone map: all identified S/R zones with confluence scores."""
+    zones   = sig.get("zones", [])
+    current = sig.get("current_price")
+    if not zones:
+        st.info("No zones identified — price data unavailable.")
+        return
+
+    rows = []
+    for z in zones:
+        score    = z["score"]
+        ztype    = z["zone_type"]
+        icon     = "🟢" if ztype == "support" else "🔴" if ztype == "resistance" else "⚪"
+        dist     = z["dist_pts"]
+        comps    = z["components"]
+        has_ob   = any("OB" in c for c in comps)
+        has_fvg  = any("FVG" in c for c in comps)
+        has_kl   = any(c not in ("OB_D", "OB_15m", "FVG_15m") for c in comps)
+        tags     = []
+        if has_ob:  tags.append("OB")
+        if has_fvg: tags.append("FVG")
+        if has_kl:  tags.append("KL")
+        score_bar = "█" * score + "░" * (10 - score)
+        rows.append({
+            " ":         icon,
+            "Type":      ztype.capitalize(),
+            "Range":     f"{z['price_low']:,.0f} – {z['price_high']:,.0f}",
+            "Mid":       f"{z['midpoint']:,.1f}",
+            "Dist (pt)": f"{dist:+.0f}" if ztype == "support" else f"+{dist:.0f}",
+            "Score":     f"{score}/10  {score_bar}",
+            "Layers":    " + ".join(tags) if tags else "—",
+        })
+
+    df_zones = pd.DataFrame(rows)
+
+    # Color-code score column via Streamlit styling
+    st.dataframe(df_zones, use_container_width=True, hide_index=True)
+
+    # Mini price ladder chart
+    if current and len(zones) > 1:
+        import plotly.graph_objects as go
+        fig = go.Figure()
+        for z in zones:
+            fc = "rgba(0,200,83,0.15)" if z["zone_type"] == "support" else "rgba(213,0,0,0.15)"
+            lc = "#00c853"             if z["zone_type"] == "support" else "#d50000"
+            fig.add_hrect(y0=z["price_low"], y1=z["price_high"],
+                          fillcolor=fc, line_color=lc, line_width=1, opacity=0.8)
+            fig.add_annotation(
+                x=0.02, y=(z["price_low"] + z["price_high"]) / 2,
+                xref="paper", yref="y",
+                text=f"{z['score']}/10  {'|'.join(z['components'][:3])}",
+                showarrow=False, font=dict(size=10, color=lc), xanchor="left",
+            )
+        fig.add_hline(y=current, line_color="#ffffff", line_width=2,
+                      annotation_text=f"NOW {current:,.1f}", annotation_position="right")
+        fig.update_layout(
+            height=250, template="plotly_dark",
+            margin=dict(l=0, r=120, t=10, b=0),
+            xaxis=dict(visible=False),
+            yaxis=dict(side="right", tickformat=",.0f"),
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
 
 def _render_key_levels_table(sig: dict):
@@ -258,6 +332,16 @@ def app():
     with st.spinner("Calculating signal..."):
         sig = _get_signal()
 
+    # ── Auto-log alert if enabled ────────────────────────────────
+    if sig.get("alert"):
+        ts_settings = load_trade_settings()
+        if ts_settings.get("auto_log", True):
+            sig_hash = f"{sig.get('direction')}_{sig.get('entry')}_{sig.get('confidence')}"
+            if st.session_state.get("_last_logged") != sig_hash:
+                if log_trade(sig):
+                    st.session_state["_last_logged"] = sig_hash
+                    st.toast("📝 Trade logged to Journal", icon="✅")
+
     # ── Main signal card ────────────────────────────────────────
     _render_signal_card(sig)
     _render_alert_banner(sig)
@@ -280,10 +364,24 @@ def app():
 
         st.markdown("### Macro Context")
         c1, c2 = st.columns(2)
-        c1.metric("Sentiment Score", sig.get("final_score", "—"))
+        htf_bias = sig.get("htf_bias", "neutral").capitalize()
+        htf_str  = sig.get("htf_strength", 0)
+        htf_col  = {"Bullish": "#00c853", "Bearish": "#d50000"}.get(htf_bias, "#9e9e9e")
+        c1.markdown(
+            f"""<div style="padding:4px 0">
+                <div style="font-size:.85em;color:#aaa;">HTF Bias</div>
+                <div style="font-size:1.4em;color:{htf_col};font-weight:bold;">{htf_bias} {htf_str}%</div>
+            </div>""", unsafe_allow_html=True)
         c2.metric("ML Prediction", sig.get("ml_prediction", "—"))
-        c1.metric("Delta Direction", sig.get("delta_dir", "—"))
+        c1.metric("Sentiment Score", sig.get("final_score", "—"))
+        c2.metric("Delta Direction", sig.get("delta_dir", "—"))
+        nzs = sig.get("nearest_zone_score", 0)
+        c1.metric("Zone Score", f"{nzs}/10")
         c2.metric("Session Risk", session.get("risk", "—").capitalize())
+
+    # ── Zone Map ────────────────────────────────────────────────
+    with st.expander("🗺️ Zone Map (Support & Resistance)", expanded=True):
+        _render_zone_map(sig)
 
     # ── Key levels ──────────────────────────────────────────────
     with st.expander("📊 Key Levels", expanded=False):
