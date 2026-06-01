@@ -30,8 +30,6 @@ for p in (str(_MD), str(_ROOT)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-import anthropic
-
 from agents.agent_tools import TOOL_SCHEMAS, execute_tool
 from agents.agent_safety import check_min_trades
 
@@ -163,6 +161,16 @@ def run(force: bool = False) -> dict:
                 _log_run(run_result)
                 return run_result
 
+        # Lazy import
+        try:
+            import anthropic as _anthropic
+        except ImportError:
+            run_result.update({"outcome": "error",
+                                "reason": "anthropic package not installed — run: pip install anthropic"})
+            _update_status("error", error="anthropic not installed")
+            _log_run(run_result)
+            return run_result
+
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
             run_result.update({"outcome": "error", "reason": "ANTHROPIC_API_KEY not set"})
@@ -170,7 +178,7 @@ def run(force: bool = False) -> dict:
             _log_run(run_result)
             return run_result
 
-        client = anthropic.Anthropic(api_key=api_key)
+        client = _anthropic.Anthropic(api_key=api_key)
 
         today_str  = datetime.now(IL_TZ).strftime("%Y-%m-%d %H:%M")
         user_msg = (
