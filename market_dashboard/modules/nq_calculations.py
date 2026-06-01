@@ -684,3 +684,211 @@ def session_win_rates(df_hourly: pd.DataFrame) -> pd.DataFrame:
         return result
     except Exception:
         return pd.DataFrame()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sprint 2 — VWAP + EQH/EQL + OTE + Statistical Edge
+# ─────────────────────────────────────────────────────────────────────────────
+
+def calculate_vwap(df: pd.DataFrame) -> pd.Series:
+    """
+    Standard VWAP = cumulative (typical_price × volume) / cumulative volume.
+    Resets each session (pass only today's intraday bars).
+    """
+    tp = (df["high"] + df["low"] + df["close"]) / 3
+    cum_vol = df["volume"].cumsum().replace(0, np.nan)
+    return (tp * df["volume"]).cumsum() / cum_vol
+
+
+def calculate_vwap_bands(df: pd.DataFrame, n_std: float = 1.0) -> tuple:
+    """
+    VWAP ± n_std bands. Returns (upper_band, lower_band) as pd.Series.
+    Uses rolling 20-bar std of deviation from VWAP.
+    """
+    vwap = calculate_vwap(df)
+    deviation = (df["close"] - vwap).rolling(20, min_periods=5).std()
+    return (vwap + n_std * deviation), (vwap - n_std * deviation)
+
+
+def vwap_position(df: pd.DataFrame) -> dict:
+    """
+    Returns current price's position relative to VWAP and bands.
+    dict: vwap, band1_upper, band1_lower, band2_upper, band2_lower,
+          current_price, sigma_distance, zone ('above'/'below'/'at'/'extreme_high'/'extreme_low')
+    """
+    if df.empty:
+        return {}
+    try:
+        vwap = calculate_vwap(df)
+        b1u, b1l = calculate_vwap_bands(df, 1.0)
+        b2u, b2l = calculate_vwap_bands(df, 2.0)
+        price = float(df["close"].iloc[-1])
+        v     = float(vwap.iloc[-1])
+        std   = float((df["close"] - vwap).rolling(20, min_periods=5).std().iloc[-1])
+        sigma = round((price - v) / std, 2) if std and std > 0 else 0.0
+
+        if sigma > 2.0:
+            zone = "extreme_high"
+        elif sigma > 0.5:
+            zone = "above"
+        elif sigma < -2.0:
+            zone = "extreme_low"
+        elif sigma < -0.5:
+            zone = "below"
+        else:
+            zone = "at"
+
+        return {
+            "vwap":         round(v, 2),
+            "band1_upper":  round(float(b1u.iloc[-1]), 2) if not np.isnan(b1u.iloc[-1]) else None,
+            "band1_lower":  round(float(b1l.iloc[-1]), 2) if not np.isnan(b1l.iloc[-1]) else None,
+            "band2_upper":  round(float(b2u.iloc[-1]), 2) if not np.isnan(b2u.iloc[-1]) else None,
+            "band2_lower":  round(float(b2l.iloc[-1]), 2) if not np.isnan(b2l.iloc[-1]) else None,
+            "current_price": round(price, 2),
+            "sigma":         sigma,
+            "zone":          zone,
+        }
+    except Exception:
+        return {}
+
+
+def detect_eqh_eql(df: pd.DataFrame, tolerance_pts: float = 4.0,
+                   lookback: int = 50, min_separation: int = 5) -> dict:
+    """
+    Equal Highs (EQH) and Equal Lows (EQL) — liquidity pool magnets.
+    Two swing points within tolerance_pts of each other = equal level.
+    Returns: {'eqh': [price, ...], 'eql': [price, ...]}
+    """
+    if len(df) < min_separation * 2:
+        return {"eqh": [], "eql": []}
+
+    recent = df.tail(lookback)
+    highs, lows = [], []
+
+    # Collect swing highs and lows (using n=2 pivot detection)
+    n = 2
+    for i in range(n, len(recent) - n):
+        h = float(recent.iloc[i]["high"])
+        l = float(recent.iloc[i]["low"])
+        if all(h >= float(recent.iloc[i - j]["high"]) for j in range(1, n + 1)) and \
+           all(h >= float(recent.iloc[i + j]["high"]) for j in range(1, n + 1)):
+            highs.append((i, h))
+        if all(l <= float(recent.iloc[i - j]["low"]) for j in range(1, n + 1)) and \
+           all(l <= float(recent.iloc[i + j]["low"]) for j in range(1, n + 1)):
+            lows.append((i, l))
+
+    def _find_equals(points):
+        eq_levels = []
+        used = set()
+        for i, (idx_i, val_i) in enumerate(points):
+            if i in used:
+                continue
+            cluster = [val_i]
+            for j, (idx_j, val_j) in enumerate(points):
+                if j != i and j not in used and abs(idx_j - idx_i) >= min_separation:
+                    if abs(val_j - val_i) <= tolerance_pts:
+                        cluster.append(val_j)
+                        used.add(j)
+            if len(cluster) >= 2:
+                eq_levels.append(round(float(np.mean(cluster)), 2))
+                used.add(i)
+        return eq_levels
+
+    return {
+        "eqh": _find_equals(highs),
+        "eql": _find_equals(lows),
+    }
+
+
+def calculate_ote_zone(swing_low: float, swing_high: float,
+                       direction: str = "bullish") -> dict:
+    """
+    Optimal Trade Entry (OTE) — ICT Fibonacci 61.8%–78.6% of impulse wave.
+    Bullish OTE: retracement INTO 61.8–78.6% of swing low→high (buy zone).
+    Bearish OTE: retracement INTO 61.8–78.6% of swing high→low (sell zone).
+    Returns: ote_low, ote_high, midpoint, fib_618, fib_786
+    """
+    rng = swing_high - swing_low
+    if rng <= 0:
+        return {}
+    if direction == "bullish":
+        ote_high = swing_high - rng * 0.618
+        ote_low  = swing_high - rng * 0.786
+    else:
+        ote_high = swing_low + rng * 0.786
+        ote_low  = swing_low + rng * 0.618
+    return {
+        "ote_low":   round(ote_low, 2),
+        "ote_high":  round(ote_high, 2),
+        "midpoint":  round((ote_low + ote_high) / 2, 2),
+        "fib_618":   round(swing_high - rng * 0.618, 2) if direction == "bullish"
+                     else round(swing_low + rng * 0.618, 2),
+        "fib_786":   round(swing_high - rng * 0.786, 2) if direction == "bullish"
+                     else round(swing_low + rng * 0.786, 2),
+        "direction": direction,
+    }
+
+
+def day_of_week_bias(df_daily: pd.DataFrame, lookback: int = 120) -> dict:
+    """
+    Historical win% per day-of-week for NQ (0=Mon … 4=Fri).
+    Returns dict: {0: 0.52, 1: 0.48, ...}
+    """
+    if len(df_daily) < 20:
+        return {}
+    try:
+        d = df_daily.tail(lookback).copy()
+        d["dow"]   = pd.to_datetime(d["date"]).dt.dayofweek
+        d["is_up"] = (d["close"].diff() > 0).astype(int)
+        return {int(k): round(float(v), 3)
+                for k, v in d.groupby("dow")["is_up"].mean().items()}
+    except Exception:
+        return {}
+
+
+def gap_fill_stats(df_daily: pd.DataFrame, lookback: int = 60) -> dict:
+    """
+    Probability that today's opening gap fills during the session.
+    Returns: gap_up_fill_pct, gap_down_fill_pct, today_gap_pts, today_gap_direction
+    """
+    if len(df_daily) < 10:
+        return {}
+    try:
+        d = df_daily.tail(lookback + 1).copy().reset_index(drop=True)
+        d["prev_close"] = d["close"].shift(1)
+        d["gap"]        = d["open"] - d["prev_close"]
+        d["filled_up"]  = (d["gap"] > 0) & (d["low"] <= d["prev_close"])
+        d["filled_dn"]  = (d["gap"] < 0) & (d["high"] >= d["prev_close"])
+        gap_up   = d[d["gap"] > 2]
+        gap_down = d[d["gap"] < -2]
+        fill_up  = round(float(gap_up["filled_up"].mean() * 100), 1)  if len(gap_up)  > 3 else None
+        fill_dn  = round(float(gap_down["filled_dn"].mean() * 100), 1) if len(gap_down) > 3 else None
+        last_gap = float(d.iloc[-1]["gap"])
+        return {
+            "gap_up_fill_pct":   fill_up,
+            "gap_down_fill_pct": fill_dn,
+            "today_gap_pts":     round(last_gap, 1),
+            "today_gap_dir":     "up" if last_gap > 0 else ("down" if last_gap < 0 else "none"),
+        }
+    except Exception:
+        return {}
+
+
+def delta_zscore(df: pd.DataFrame, window: int = 20) -> pd.Series:
+    """Standardized per-bar delta — highlights statistically extreme buying/selling."""
+    delta = approximate_delta(df)
+    mean  = delta.rolling(window, min_periods=5).mean()
+    std   = delta.rolling(window, min_periods=5).std().replace(0, np.nan)
+    return ((delta - mean) / std).fillna(0)
+
+
+def volume_anomaly_score(df: pd.DataFrame, window: int = 30) -> float:
+    """
+    Ratio of recent 3-bar volume to historical average.
+    >2.0 = institutional activity, <0.5 = low conviction.
+    """
+    if len(df) < 5:
+        return 1.0
+    recent = float(df["volume"].tail(3).mean())
+    hist   = float(df["volume"].tail(window).mean())
+    return round(recent / hist, 2) if hist > 0 else 1.0
