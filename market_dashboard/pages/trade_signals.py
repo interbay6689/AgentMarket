@@ -18,6 +18,7 @@ from modules.signal_engine import generate_signal
 from modules.nq_data import get_todays_nq_data, load_nq_daily_cache, current_session_israel
 from modules.nq_calculations import cumulative_delta, detect_fvg
 from modules.trade_tracker import log_trade, load_trade_settings, load_trade_log, summary_stats
+from modules.signal_validator import validate, load_validation_log, agreement_stats
 
 import json
 from pathlib import Path as _Path
@@ -38,6 +39,15 @@ def _load_agent_proposals(n: int = 3) -> list:
 @st.cache_data(ttl=60)
 def _get_signal():
     return generate_signal()
+
+
+@st.cache_data(ttl=60)
+def _get_validation(rule_sig: dict | None = None):
+    try:
+        return validate(rule_sig)
+    except Exception as e:
+        return {"agreement": "ERROR", "consensus_label": f"⚠️ Validator error: {e}",
+                "note": str(e), "rule": {}, "agent": {}}
 
 
 @st.cache_data(ttl=60)
@@ -290,6 +300,133 @@ def _render_nq_chart(df_5m: pd.DataFrame, sig: dict):
     st.plotly_chart(fig, use_container_width=True)
 
 
+def _render_cross_validation(val: dict):
+    """Side-by-side comparison: rule engine vs AI agent vs consensus."""
+    agreement = val.get("agreement", "PENDING")
+    label     = val.get("consensus_label", "—")
+    note      = val.get("note", "")
+    rule      = val.get("rule", {})
+    agent     = val.get("agent", {})
+
+    # Agreement colour
+    agg_color = {
+        "FULL":     "#00c853",
+        "PARTIAL":  "#ffd600",
+        "CONFLICT": "#d50000",
+        "NEUTRAL":  "#9e9e9e",
+        "PENDING":  "#78909c",
+        "BLACKOUT": "#b71c1c",
+    }.get(agreement, "#9e9e9e")
+
+    # Consensus banner
+    st.markdown(
+        f"""
+        <div style="background:{agg_color}20; border-left:5px solid {agg_color};
+                    padding:10px 16px; border-radius:6px; margin-bottom:10px;">
+            <b style="color:{agg_color}; font-size:1.05em;">{label}</b><br>
+            <span style="color:#ccc; font-size:.88em;">{note}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Three-column breakdown
+    col_r, col_a, col_c = st.columns(3)
+
+    # Rule engine column
+    rd = rule.get("direction", "—")
+    rc = rule.get("confidence", 0)
+    r_color = _direction_color(rd)
+    with col_r:
+        st.markdown(
+            f"""<div style="background:#1a1a2e; border-radius:6px; padding:12px; text-align:center;">
+                <div style="color:#aaa; font-size:.8em; margin-bottom:4px;">📐 Rule Engine</div>
+                <div style="font-size:1.6em; color:{r_color}; font-weight:bold;">
+                    {_direction_emoji(rd)} {rd}
+                </div>
+                <div style="color:#ccc; font-size:.9em;">Confidence: {rc}%</div>
+                <div style="color:#888; font-size:.8em;">Alert: {'✅' if rule.get('alert') else '—'}</div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+
+    # AI Agent column
+    ad = agent.get("direction", "PENDING")
+    ac = agent.get("confidence", 0)
+    a_color = _direction_color(ad) if ad in ("LONG", "SHORT") else "#78909c"
+    age_str = (
+        f"{agent.get('age_min'):.0f}m ago" if agent.get("age_min") is not None else "—"
+    )
+    fresh_tag = "🟢 fresh" if agent.get("is_fresh") else "🔴 stale"
+    with col_a:
+        st.markdown(
+            f"""<div style="background:#1a1a2e; border-radius:6px; padding:12px; text-align:center;">
+                <div style="color:#aaa; font-size:.8em; margin-bottom:4px;">🤖 AI Agent</div>
+                <div style="font-size:1.6em; color:{a_color}; font-weight:bold;">
+                    {_direction_emoji(ad)} {ad}
+                </div>
+                <div style="color:#ccc; font-size:.9em;">Confidence: {ac}%</div>
+                <div style="color:#888; font-size:.8em;">{age_str} · {fresh_tag}</div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+
+    # Consensus column
+    cd = val.get("consensus_direction", "NEUTRAL")
+    cc = val.get("consensus_confidence", 0)
+    c_color = _direction_color(cd) if cd in ("LONG", "SHORT") else agg_color
+    with col_c:
+        st.markdown(
+            f"""<div style="background:{agg_color}15; border:1px solid {agg_color};
+                            border-radius:6px; padding:12px; text-align:center;">
+                <div style="color:#aaa; font-size:.8em; margin-bottom:4px;">⚖️ Consensus</div>
+                <div style="font-size:1.6em; color:{c_color}; font-weight:bold;">
+                    {_direction_emoji(cd)} {cd}
+                </div>
+                <div style="color:#ccc; font-size:.9em;">Confidence: {cc}%</div>
+                <div style="color:{agg_color}; font-size:.8em; font-weight:bold;">{agreement}</div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+
+
+def _render_validation_history():
+    """Compact agreement rate chart from validation_log.json."""
+    entries = load_validation_log(100)
+    if not entries:
+        st.info("No validation history yet — run Signal Agent at least once.")
+        return
+
+    stats = agreement_stats(100)
+    sc1, sc2, sc3, sc4 = st.columns(4)
+    sc1.metric("Total Validations", stats.get("total", 0))
+    sc2.metric("Full Agreement %", f"{stats.get('full_pct', 0):.1f}%",
+               help="Both engines said same direction")
+    sc3.metric("Conflict %", f"{stats.get('conflict_pct', 0):.1f}%",
+               delta=f"{'⚠️' if stats.get('conflict_pct', 0) > 20 else '✅'}",
+               delta_color="off")
+    sc4.metric("Full LONG / SHORT",
+               f"{stats.get('full_long', 0)} / {stats.get('full_short', 0)}")
+
+    # Agreement type bar chart
+    by_type = stats.get("by_type", {})
+    if by_type:
+        df_agg = pd.DataFrame(
+            [{"Agreement": k, "Count": v} for k, v in by_type.items()]
+        ).sort_values("Count", ascending=False)
+        colors_map = {
+            "FULL": "#00c853", "PARTIAL": "#ffd600", "CONFLICT": "#d50000",
+            "NEUTRAL": "#9e9e9e", "PENDING": "#78909c", "BLACKOUT": "#b71c1c",
+        }
+        fig = go.Figure(go.Bar(
+            x=df_agg["Agreement"], y=df_agg["Count"],
+            marker_color=[colors_map.get(a, "#9e9e9e") for a in df_agg["Agreement"]],
+        ))
+        fig.update_layout(height=200, template="plotly_dark",
+                          margin=dict(l=0, r=0, t=10, b=0), showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+
+
 def _render_zone_map(sig: dict):
     """Visual zone map: all identified S/R zones with confluence scores."""
     zones   = sig.get("zones", [])
@@ -453,6 +590,14 @@ def app():
         nzs = sig.get("nearest_zone_score", 0)
         c1.metric("Zone Score", f"{nzs}/10")
         c2.metric("Session Risk", session.get("risk", "—").capitalize())
+
+    # ── Cross-Validation ────────────────────────────────────────
+    st.markdown("### ⚖️ Signal Cross-Validation")
+    val = _get_validation(sig)
+    _render_cross_validation(val)
+
+    with st.expander("📊 Validation History (last 100)", expanded=False):
+        _render_validation_history()
 
     # ── Zone Map ────────────────────────────────────────────────
     with st.expander("🗺️ Zone Map (Support & Resistance)", expanded=True):

@@ -302,6 +302,46 @@ def read_market_regime() -> dict:
         return {"error": str(e)}
 
 
+def read_rule_signal() -> dict:
+    """
+    Output of the rule-based signal engine (no AI — pure indicator scoring).
+    Use this to cross-validate your own analysis: if the rule engine agrees,
+    consensus confidence is higher; if it conflicts, investigate the disagreement.
+    Returns: direction, confidence (0-100), score components, key levels, regime, blackout.
+    """
+    try:
+        from modules.signal_engine import generate_signal
+        sig = generate_signal()
+        # Return a compact summary (strip heavy chart data)
+        return {
+            "direction":       sig.get("direction", "NEUTRAL"),
+            "confidence":      sig.get("confidence", 0),
+            "score":           sig.get("score", 0),
+            "alert":           sig.get("alert", False),
+            "session":         sig.get("session", "?"),
+            "htf_bias":        sig.get("htf_bias", "?"),
+            "htf_strength":    sig.get("htf_strength", 0),
+            "nearest_zone_score": sig.get("nearest_zone_score", 0),
+            "delta_dir":       sig.get("delta_dir", "?"),
+            "vwap_zone":       sig.get("vwap", {}).get("zone", "?"),
+            "stacked_count":   sig.get("stacked", {}).get("count", 0),
+            "blackout":        sig.get("blackout", False),
+            "blackout_reason": sig.get("blackout_reason", ""),
+            "regime":          sig.get("regime", "transitioning"),
+            "regime_label":    sig.get("regime_label", "—"),
+            "factors_summary": [
+                {"factor": f["factor"], "side": f["side"], "pts": f["pts"]}
+                for f in sig.get("factors", [])[:8]
+            ],
+            "entry":  sig.get("entry"),
+            "stop":   sig.get("stop"),
+            "target": sig.get("target"),
+            "rr":     sig.get("rr"),
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ─── WRITE TOOLS ──────────────────────────────────────────────────────────────
 
 def update_fundamental_weights(new_weights: dict, reasoning: str,
@@ -443,6 +483,7 @@ TOOL_REGISTRY: dict[str, callable] = {
     "read_agent_proposals":        read_agent_proposals,
     "read_economic_calendar":      read_economic_calendar,
     "read_market_regime":          read_market_regime,
+    "read_rule_signal":            read_rule_signal,
     "update_fundamental_weights":  update_fundamental_weights,
     "update_entry_filter":         update_entry_filter,
     "update_agent_config":         update_agent_config,
@@ -641,6 +682,18 @@ TOOL_SCHEMAS = [
             "Current market regime classification: trending_bull | trending_bear | "
             "ranging | high_vol | transitioning. Includes ADX, ATR ratio, recommended "
             "strategies, confidence threshold adjustment, and position size multiplier."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "read_rule_signal",
+        "description": (
+            "Output of the rule-based signal engine (pure indicator scoring, no AI). "
+            "Call after read_technical_state and read_fundamental_state to cross-validate "
+            "your own analysis. If the rule engine agrees → consensus confidence is higher. "
+            "If it conflicts with your analysis → investigate the disagreement before proposing. "
+            "Returns: direction, confidence, score components, suggested entry/stop/target, "
+            "blackout status, regime, and factor breakdown."
         ),
         "input_schema": {"type": "object", "properties": {}, "required": []},
     },
