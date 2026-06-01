@@ -281,12 +281,11 @@ def _tab_parameter_sweep() -> None:
         end_date   = pd.Timestamp(end_d_s)
         start_date = end_date - pd.Timedelta(days=lookback)
 
-        df_window = df_daily.copy()
-        if start_date is not None:
-            df_window = df_window[df_window.index >= start_date]
-
         with st.spinner(f"Testing {len(test_vals)} values of {sweep_param}…"):
-            sweep_results = sweep_parameter(df_window, sweep_param, test_vals, base_params)
+            sweep_results = sweep_parameter(
+                df_daily, sweep_param, test_vals, base_params,
+                start_date=str(start_date.date()), end_date=str(end_d_s),
+            )
 
         st.session_state["sweep_results"] = sweep_results
         st.session_state["sweep_param"]   = sweep_param
