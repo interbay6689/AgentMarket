@@ -2,7 +2,7 @@ import datetime
 import json
 import os
 
-from AgentMarket.ai_analysis.openai_client import analyze_text
+from ai_analysis.openai_client import analyze_text
 from AgentMarket.rss_feeds.feeds_list import RSS_FEEDS
 from AgentMarket.utils.helpers import parse_rss
 
