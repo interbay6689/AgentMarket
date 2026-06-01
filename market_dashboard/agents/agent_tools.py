@@ -456,11 +456,15 @@ def run_backtest_sweep(param: str, test_values: list, lookback_days: int = 180) 
 
         if not isinstance(df.index, pd.DatetimeIndex):
             df.index = pd.to_datetime(df.index, errors="coerce")
-        end   = df.index.max()
-        start = end - pd.Timedelta(days=lookback_days)
-        df    = df[df.index >= start].copy()
+        end_ts   = df.index.max()
+        start_ts = end_ts - pd.Timedelta(days=lookback_days)
 
-        results = sweep_parameter(df, param, [float(v) for v in test_values], DEFAULT_PARAMS)
+        # Pass full df — sweep_parameter calls run_backtest which handles date windowing
+        # without stripping the lookback bars needed for scoring
+        results = sweep_parameter(
+            df, param, [float(v) for v in test_values], DEFAULT_PARAMS,
+            start_date=str(start_ts.date()), end_date=str(end_ts.date()),
+        )
         return {
             "param":   param,
             "results": results[:8],

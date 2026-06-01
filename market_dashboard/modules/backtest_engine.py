@@ -406,35 +406,64 @@ def run_backtest(
         return BacktestResult(params=params, start_date="", end_date="",
                               signals_fired=0, trades=[], metrics={"error": "insufficient_data"})
 
-    # Normalize index to DatetimeIndex
+    # Normalize index to DatetimeIndex — keep the FULL df for lookback
     if not isinstance(df_daily.index, pd.DatetimeIndex):
         df_daily = df_daily.copy()
         df_daily.index = pd.to_datetime(df_daily.index, errors="coerce")
         df_daily = df_daily.dropna(how="all")
 
-    df_daily = df_daily.sort_index()
+    full_df = df_daily.sort_index()
 
-    # Date filtering
+    # Determine which bar indices are in the signal window
+    # We iterate only those bars, but use full_df for lookback — no filtering!
+    all_indices = full_df.index
+    first_signal_bar = 25   # need at least 25 bars of history
+
+    # Signal window: find integer positions inside [start_date, end_date]
     if start_date:
-        df_daily = df_daily[df_daily.index >= pd.Timestamp(start_date)]
+        start_ts = pd.Timestamp(start_date)
+        signal_start_i = max(first_signal_bar,
+                             all_indices.searchsorted(start_ts, side="left"))
+    else:
+        signal_start_i = first_signal_bar
+
     if end_date:
-        df_daily = df_daily[df_daily.index <= pd.Timestamp(end_date)]
+        end_ts = pd.Timestamp(end_date)
+        # last bar we generate signals for (leave 1+ bars for simulation)
+        signal_end_i = min(len(full_df) - 2,
+                           all_indices.searchsorted(end_ts, side="right") - 1)
+    else:
+        signal_end_i = len(full_df) - 2
 
-    if len(df_daily) < 30:
-        return BacktestResult(params=params, start_date=start_date or "", end_date=end_date or "",
-                              signals_fired=0, trades=[], metrics={"error": "insufficient_data_after_filter"})
+    if signal_start_i > signal_end_i:
+        n_bars_in_range = signal_end_i - signal_start_i + 1
+        return BacktestResult(
+            params=params,
+            start_date=start_date or "",
+            end_date=end_date or "",
+            signals_fired=0,
+            trades=[],
+            metrics={
+                "error": "insufficient_data_after_filter",
+                "detail": (
+                    f"Only {len(full_df)} total bars in cache. "
+                    f"Selected window [{start_date} → {end_date}] maps to "
+                    f"{max(0, n_bars_in_range)} bars — need ≥ 25 lookback + range bars. "
+                    "Try expanding the date range or visit NQ Analysis to refresh the data cache."
+                ),
+            },
+        )
 
-    # Re-index on full history (need lookback before start_date)
-    full_df = df_daily  # already filtered — scoring uses only past bars within the df
+    result_start = str(full_df.index[signal_start_i].date())
+    result_end   = str(full_df.index[signal_end_i].date())
+
     score_log = _load_score_log()
-
-    result_start = str(full_df.index[0].date())
-    result_end   = str(full_df.index[-1].date())
 
     trades: list[BacktestTrade] = []
     signals_fired = 0
 
-    for i in range(25, len(full_df) - 1):    # need 25 bars lookback, keep 1 bar for simulation
+    # Iterate only the signal window, but pass full_df so _score_bar has full lookback
+    for i in range(signal_start_i, signal_end_i + 1):
         sig = _score_bar(i, full_df, score_log, params)
         if sig is None:
             continue
@@ -462,6 +491,8 @@ def sweep_parameter(
     param_name: str,
     test_values: list[float],
     base_params: dict | None = None,
+    start_date: str | None = None,
+    end_date:   str | None = None,
 ) -> list[dict]:
     """
     Test a single parameter across multiple values.
@@ -476,7 +507,7 @@ def sweep_parameter(
     results = []
     for val in test_values:
         p = {**base_params, param_name: val}
-        bt = run_backtest(df_daily, params=p)
+        bt = run_backtest(df_daily, params=p, start_date=start_date, end_date=end_date)
         results.append({
             "param":         param_name,
             "value":         val,
