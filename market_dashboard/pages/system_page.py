@@ -12,6 +12,7 @@ import streamlit as st
 import pandas as pd
 from modules.config import load_config, save_config
 from modules.alerts import load_alerts
+from modules.trade_tracker import load_trade_settings, save_trade_settings
 
 
 def _tab_settings():
@@ -146,9 +147,78 @@ def _tab_sentiment_feed():
         st.error(f"שגיאה בטעינת הקובץ: {e}")
 
 
+def _tab_trade_tracking():
+    st.subheader("📓 Trade Tracking Settings")
+    ts = load_trade_settings()
+
+    with st.form("trade_tracking_form"):
+        st.markdown("**Logging**")
+        c1, c2 = st.columns(2)
+        auto_log      = c1.toggle("Auto-log alerts",    value=ts.get("auto_log", True),
+                                   help="Automatically save each trade alert to trade_log.csv")
+        auto_evaluate = c2.toggle("Auto-evaluate open trades", value=ts.get("auto_evaluate", True),
+                                   help="Automatically resolve open trades against price when Journal page opens")
+
+        st.markdown("**Entry Filters** — trade is logged only when ALL conditions met")
+        c1, c2, c3 = st.columns(3)
+        min_conf  = c1.number_input("Min Confidence (%)", 0, 100,
+                                    value=int(ts.get("min_confidence", 60)), step=5)
+        min_zone  = c2.number_input("Min Zone Score (0–10)", 0, 10,
+                                    value=int(ts.get("min_zone_score", 5)), step=1)
+        min_rr    = c3.number_input("Min R:R",  0.5, 5.0,
+                                    value=float(ts.get("min_rr", 1.5)), step=0.1)
+
+        st.markdown("**Deduplication & Evaluation**")
+        c1, c2 = st.columns(2)
+        dedup   = c1.number_input("Dedup window (min)", 5, 120,
+                                   value=int(ts.get("dedup_minutes", 30)), step=5,
+                                   help="Same direction won't be logged again within this window")
+        eval_h  = c2.number_input("Evaluation interval (hours)", 1, 24,
+                                   value=int(ts.get("eval_interval_h", 2)), step=1,
+                                   help="How long to wait before checking if stop/target was hit")
+
+        st.markdown("**Risk & Equity Curve**")
+        risk_per = st.number_input("Risk per trade ($)", 10.0, 10_000.0,
+                                    value=float(ts.get("risk_per_trade", 100.0)), step=10.0,
+                                    help="Used only for dollar P&L display in Equity Curve tab")
+
+        if st.form_submit_button("💾 Save Trade Tracking Settings"):
+            new_settings = {
+                "auto_log":        auto_log,
+                "auto_evaluate":   auto_evaluate,
+                "min_confidence":  min_conf,
+                "min_zone_score":  min_zone,
+                "min_rr":          min_rr,
+                "dedup_minutes":   dedup,
+                "eval_interval_h": eval_h,
+                "risk_per_trade":  risk_per,
+            }
+            save_trade_settings(new_settings)
+            st.success("Trade tracking settings saved!")
+
+    # Clear log option
+    st.markdown("---")
+    st.markdown("**Danger Zone**")
+    from modules.trade_tracker import TRADE_LOG_PATH
+    if TRADE_LOG_PATH.exists():
+        size = TRADE_LOG_PATH.stat().st_size / 1024
+        st.caption(f"trade_log.csv — {size:.1f} KB")
+    if st.button("🗑️ Clear Trade Log", type="secondary"):
+        if st.session_state.get("_confirm_clear_log"):
+            import pandas as pd
+            from modules.trade_tracker import COLUMNS
+            pd.DataFrame(columns=COLUMNS).to_csv(TRADE_LOG_PATH, index=False)
+            st.session_state.pop("_confirm_clear_log", None)
+            st.success("Trade log cleared.")
+            st.rerun()
+        else:
+            st.session_state["_confirm_clear_log"] = True
+            st.warning("Click again to confirm — this will delete all trade history.")
+
+
 def app():
     st.title("⚙️ System")
-    t1, t2, t3, t4 = st.tabs(["⚙️ Settings", "⚠️ Alerts", "🖥️ System Info", "📰 Sentiment Feed"])
+    t1, t2, t3, t4, t5 = st.tabs(["⚙️ Settings", "⚠️ Alerts", "🖥️ System Info", "📰 Sentiment Feed", "📓 Trade Tracking"])
     with t1:
         _tab_settings()
     with t2:
@@ -157,3 +227,5 @@ def app():
         _tab_system()
     with t4:
         _tab_sentiment_feed()
+    with t5:
+        _tab_trade_tracking()

@@ -41,6 +41,7 @@ PAGE_MODULES = {
     "📊 Dashboard":    "dashboard",
     "📈 NQ Analysis":  "nq_order_flow",
     "🧠 Learning":     "ml_learning",
+    "📓 Journal":      "trade_journal",
     "⚙️ System":       "system_page",
 }
 

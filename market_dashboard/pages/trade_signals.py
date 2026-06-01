@@ -17,6 +17,7 @@ from datetime import datetime
 from modules.signal_engine import generate_signal
 from modules.nq_data import get_todays_nq_data, load_nq_daily_cache, current_session_israel
 from modules.nq_calculations import cumulative_delta, detect_fvg
+from modules.trade_tracker import log_trade, load_trade_settings, load_trade_log, summary_stats
 
 
 @st.cache_data(ttl=60)
@@ -330,6 +331,16 @@ def app():
 
     with st.spinner("Calculating signal..."):
         sig = _get_signal()
+
+    # ── Auto-log alert if enabled ────────────────────────────────
+    if sig.get("alert"):
+        ts_settings = load_trade_settings()
+        if ts_settings.get("auto_log", True):
+            sig_hash = f"{sig.get('direction')}_{sig.get('entry')}_{sig.get('confidence')}"
+            if st.session_state.get("_last_logged") != sig_hash:
+                if log_trade(sig):
+                    st.session_state["_last_logged"] = sig_hash
+                    st.toast("📝 Trade logged to Journal", icon="✅")
 
     # ── Main signal card ────────────────────────────────────────
     _render_signal_card(sig)
