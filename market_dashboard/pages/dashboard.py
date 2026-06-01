@@ -6,7 +6,7 @@ from pathlib import Path
 import subprocess
 import joblib
 import matplotlib
-from datetime import datetime
+from datetime import datetime, date, timedelta
 
 matplotlib.use('Agg')
 
@@ -15,6 +15,7 @@ _SCORE_PATH  = _ROOT / "scores_news" / "config" / "score_log.csv"
 _MERGED_PATH = _ROOT / "scores_news" / "ml_model" / "merged_scores_mes.csv"
 _MODEL_PATH  = _ROOT / "scores_news" / "ml_model" / "model.pkl"
 _PERF_PATH   = _ROOT / "scores_news" / "ml_model" / "ml_performance_log.csv"
+_FINAL_SCORE = _ROOT / "scores_news" / "cat_scores" / "final_score.py"
 
 
 @st.cache_data(ttl=300)
@@ -52,8 +53,31 @@ def _load_model_accuracy():
         return "לא זמין"
 
 
+def _run_final_score():
+    """מריץ final_score.py ומחזיר (success, output)."""
+    try:
+        result = subprocess.run(
+            ["python", str(_FINAL_SCORE)],
+            capture_output=True, text=True, timeout=120
+        )
+        if result.returncode == 0:
+            st.cache_data.clear()
+            return True, result.stdout
+        return False, result.stderr or result.stdout
+    except subprocess.TimeoutExpired:
+        return False, "timeout — הניתוח לקח יותר מ-2 דקות"
+    except Exception as e:
+        return False, str(e)
+
+
+def _data_age_days(df: pd.DataFrame) -> int:
+    """כמה ימים עברו מאז הנתון האחרון."""
+    last = df["date"].max().date()
+    return (date.today() - last).days
+
+
 def app():
-    # === כותרת + כפתור רענן ===
+    # ─── כותרת + רענן ───────────────────────────────────────────
     col_title, col_refresh = st.columns([6, 1])
     with col_title:
         st.title("📊 Market Sentiment Dashboard – החלטת מסחר יומית רשמית")
@@ -63,19 +87,53 @@ def app():
             st.cache_data.clear()
             st.rerun()
 
-    st.caption(f"עודכן לאחרונה: {datetime.now().strftime('%H:%M:%S')} | מתעדכן אוטומטית כל 5 דקות")
+    st.caption(f"זמן נוכחי: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
 
-    # === תחזית ML ===
+    # ─── זיהוי נתונים ישנים ───────────────────────────────────────
+    try:
+        df_check = _load_score_log()
+        age = _data_age_days(df_check)
+        last_date = df_check["date"].max().date()
+
+        if age >= 1:
+            # אזהרה ברורה
+            st.warning(
+                f"⚠️ **נתוני הציונים אינם מעודכנים** — "
+                f"הנתון האחרון מתאריך **{last_date}** ({age} ימים לאחור). "
+                f"לחץ על הכפתור כדי להריץ ניתוח עכשיו."
+            )
+            col_run, col_skip = st.columns([2, 5])
+            with col_run:
+                if st.button("▶️ הרץ ניתוח יומי עכשיו", type="primary", use_container_width=True):
+                    with st.spinner("מריץ ניתוח... (עד 2 דקות)"):
+                        ok, output = _run_final_score()
+                    if ok:
+                        st.success("✅ הניתוח הסתיים — הנתונים עודכנו")
+                        if output:
+                            st.code(output[:2000])
+                        st.rerun()
+                    else:
+                        st.error(f"❌ שגיאה בניתוח:\n{output[:1000]}")
+    except FileNotFoundError:
+        st.error("❌ score_log.csv לא נמצא — הרץ ניתוח יומי תחילה.")
+        if st.button("▶️ הרץ ניתוח ראשוני", type="primary"):
+            with st.spinner("מריץ ניתוח ראשוני..."):
+                ok, output = _run_final_score()
+            if ok:
+                st.success("✅ הושלם")
+                st.cache_data.clear()
+                st.rerun()
+            else:
+                st.error(output)
+        return
+
+    # ─── תחזית ML ───────────────────────────────────────────────
     st.subheader("🧠 תחזית בינה מלאכותית")
     col1, col2 = st.columns(2)
     col1.metric("📍 המלצת AI יומית", _load_ml_prediction())
     col2.metric("🎯 דיוק מצטבר", _load_model_accuracy())
 
     with st.expander("🧠 ניהול חיזוי יומי"):
-        if st.button("🚀 הרץ תחזית יומית"):
-            st.cache_data.clear()
-            st.success(f"✅ תחזית: {_load_ml_prediction()}")
-
         if st.button("📊 בדוק הצלחת חיזוי"):
             if datetime.now().hour >= 20:
                 try:
@@ -83,29 +141,14 @@ def app():
                         ["python", str(_ROOT / "scores_news" / "ml_model" / "performance_tracker.py")],
                         capture_output=True, text=True
                     )
-                    st.success("📈 התחזית הושוותה בהצלחה!")
+                    st.success("📈 הושוותה בהצלחה!")
                     st.code(result.stdout)
                 except Exception as e:
                     st.error(f"שגיאה: {e}")
             else:
-                st.warning("⏳ ניתן לבדוק רק לאחר השעה 20:00 (שעון ישראל)")
+                st.warning("⏳ ניתן לבדוק רק לאחר השעה 20:00")
 
-    # === הפעל ניתוח יומי ===
-    with st.expander("🚀 הפעל ניתוח יומי"):
-        if st.button("הרץ final_score.py"):
-            try:
-                result = subprocess.run(
-                    ["python", str(_ROOT / "scores_news" / "cat_scores" / "final_score.py")],
-                    capture_output=True, text=True
-                )
-                st.success("✅ הרצה הסתיימה בהצלחה")
-                st.code(result.stdout)
-                st.cache_data.clear()
-                st.rerun()
-            except Exception as e:
-                st.error(f"שגיאה: {e}")
-
-    # === טעינת נתוני ציונים ===
+    # ─── ציוני הניתוח ───────────────────────────────────────────
     try:
         df = _load_score_log()
         last_day = df.iloc[-1]
@@ -116,7 +159,6 @@ def app():
         col1.metric("🎯 ציון משוקלל", last_day.get("final_score", "—"))
         col2.metric("📌 המלצה", last_day.get("bias", "—"))
 
-        # כרטיסי קטגוריות
         st.markdown("### 📊 ציוני קטגוריות")
         cols = st.columns(len(score_columns))
         for i, col_name in enumerate(score_columns):
@@ -126,29 +168,23 @@ def app():
                 st.metric(label=col_name.replace("_score", "").capitalize(),
                           value=f"{score:.0f}", delta=color)
 
-        # גרף מגמות
         st.markdown("### 📈 מגמות לפי קטגוריות")
         st.line_chart(df.set_index("date")[score_columns], height=250)
 
-        # השוואת Final Score ל-MES
         st.markdown("### 🔁 השוואת Final Score ל־MES")
         plot_cols = [c for c in ["final_score", "daily_change_pct"] if c in df.columns]
         if plot_cols:
             st.line_chart(df.set_index("date")[plot_cols], height=250)
         else:
-            st.info("📁 daily_change_pct יוצג לאחר הרצת final_score.py")
+            st.info("📁 daily_change_pct יוצג לאחר הרצת הניתוח")
 
-        # Heatmap
         st.markdown("### 🌡 Heatmap ציונים אחרונים")
         fig, ax = plt.subplots(figsize=(10, 4))
-        sns.heatmap(
-            df.set_index("date")[score_columns].tail(15),
-            cmap="RdYlGn", annot=True, fmt=".0f", linewidths=0.5, ax=ax
-        )
+        sns.heatmap(df.set_index("date")[score_columns].tail(15),
+                    cmap="RdYlGn", annot=True, fmt=".0f", linewidths=0.5, ax=ax)
         st.pyplot(fig)
         plt.close(fig)
 
-        # בר-צ'ארט יום אחרון
         st.markdown("### 📊 קטגוריות – היום האחרון")
         latest_scores = {c.replace("_score", ""): last_day[c] for c in score_columns}
         st.bar_chart(pd.DataFrame.from_dict(latest_scores, orient="index", columns=["score"]))
