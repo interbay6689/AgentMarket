@@ -21,7 +21,7 @@ def app():
         w_bonds = st.number_input("Bonds Weight", min_value=0.0, max_value=1.0, value=cfg['weights']['bonds'])
         w_macro = st.number_input("Macro Weight", min_value=0.0, max_value=1.0, value=cfg['weights']['macro'])
         w_sentiment = st.number_input("Sentiment Weight", min_value=0.0, max_value=1.0, value=cfg['weights']['sentiment'])
-        w_vix = st.number_input("VIX Weight", min_value=0.0, max_value=1.0, value=cfg['weights'].get('vix', 0.20))
+        w_vix = st.number_input("VIX Weight", min_value=0.0, max_value=1.0, value=cfg['weights'].get('futures_vix', 0.15))
         w_sectors = st.number_input("Sectors Weight", min_value=0.0, max_value=1.0, value=cfg['weights']['sectors'])
         w_mes = st.number_input("MES Weight", min_value=0.0, max_value=1.0, value=cfg['weights']['mes'])
 
@@ -39,7 +39,7 @@ def app():
                     'bonds': w_bonds,
                     'macro': w_macro,
                     'sentiment': w_sentiment,
-                    'vix': w_vix,
+                    'futures_vix': w_vix,
                     'sectors': w_sectors,
                     'mes': w_mes
                 },

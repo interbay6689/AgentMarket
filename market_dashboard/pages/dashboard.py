@@ -59,6 +59,7 @@ def _make_env() -> dict:
     import os
     env = os.environ.copy()
     env["PYTHONPATH"] = str(_ROOT) + os.pathsep + env.get("PYTHONPATH", "")
+    env["PYTHONIOENCODING"] = "utf-8"
     return env
 
 

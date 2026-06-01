@@ -1,1 +1,4 @@
-// sentiment_keywords.json
+{
+  "bullish": ["rally", "surge", "gain", "beat", "strong", "growth", "recovery", "breakout"],
+  "bearish": ["crash", "plunge", "drop", "miss", "weak", "recession", "collapse", "fear"]
+}

@@ -1,14 +1,27 @@
-# utils/whatsapp_alerts.py
+import os
 from twilio.rest import Client
 
-account_sid = 'AC09c9469594d0ea559a2be4e1cd6bff44'
-auth_token = '54cb39a27bc771883ff91b3a69366662'
-client = Client(account_sid, auth_token)
+account_sid = os.environ.get('TWILIO_ACCOUNT_SID', '')
+auth_token  = os.environ.get('TWILIO_AUTH_TOKEN', '')
 
-def send_whatsapp_message(body, to_whatsapp_number):
-    from_whatsapp_number = 'whatsapp:+14155238886'  # מספר Twilio Sandbox
+_client = None
 
-    message = client.messages.create(
+
+def _get_client():
+    global _client
+    if _client is None:
+        if not account_sid or not auth_token:
+            raise RuntimeError(
+                "Twilio credentials not set. "
+                "Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN environment variables."
+            )
+        _client = Client(account_sid, auth_token)
+    return _client
+
+
+def send_whatsapp_message(body: str, to_whatsapp_number: str) -> str:
+    from_whatsapp_number = 'whatsapp:+14155238886'  # Twilio Sandbox number
+    message = _get_client().messages.create(
         from_=from_whatsapp_number,
         body=body,
         to=f'whatsapp:{to_whatsapp_number}'
