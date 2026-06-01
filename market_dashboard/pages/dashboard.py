@@ -55,10 +55,14 @@ def _load_model_accuracy():
 
 def _run_final_score():
     """מריץ final_score.py ומחזיר (success, output)."""
+    import os
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(_ROOT) + os.pathsep + env.get("PYTHONPATH", "")
     try:
         result = subprocess.run(
             ["python", str(_FINAL_SCORE)],
-            capture_output=True, text=True, timeout=120
+            capture_output=True, text=True, timeout=120,
+            cwd=str(_ROOT), env=env
         )
         if result.returncode == 0:
             st.cache_data.clear()
