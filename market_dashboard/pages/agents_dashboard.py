@@ -1,6 +1,6 @@
 """
 Agents Dashboard — monitor and control the multi-agent AI system.
-Sprint 1: Agent Status tab only.
+Sprint 2: Orchestrator controls + live run buttons.
 """
 from __future__ import annotations
 
@@ -26,6 +26,7 @@ from agents.agent_safety import (
     PARAMETER_LIMITS,
     CHANGE_RULES,
 )
+from agents import orchestrator
 
 IL_TZ      = pytz.timezone("Asia/Jerusalem")
 _LOGS      = _MD / "logs"
@@ -82,56 +83,91 @@ def _status_chip(status: str) -> str:
 def _tab_agent_status() -> None:
     st.subheader("Agent Status")
 
+    # ── Orchestrator controls ──────────────────────────────────────────────────
+    orch_status = orchestrator.get_status()
+    is_running  = orch_status.get("_scheduler_running", False)
+    has_apsched = orch_status.get("_apscheduler_available", False)
+
+    with st.container(border=True):
+        c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+        c1.markdown("**🧠 Orchestrator Scheduler**")
+        c2.markdown(
+            _status_chip("running" if is_running else "idle"),
+            unsafe_allow_html=True,
+        )
+        if not has_apsched:
+            c3.caption("apscheduler not installed")
+        elif is_running:
+            if c3.button("⏹ Stop", key="btn_stop"):
+                orchestrator.stop()
+                st.rerun()
+        else:
+            if c3.button("▶ Start", key="btn_start", type="primary"):
+                orchestrator.start(indicators_interval_minutes=5)
+                st.rerun()
+
+        if c4.button("🔄 Run Now", key="btn_run_now", help="Run indicators + signal once"):
+            with st.spinner("Running indicators + signal agent…"):
+                result = orchestrator.run_once("indicators_signal")
+            outcome = result.get("outcome", result.get("status", "?"))
+            if "error" in result:
+                st.error(f"Error: {result['error']}")
+            else:
+                st.success(f"Done — {outcome}")
+            st.rerun()
+
+    st.divider()
+
+    # ── Per-agent status table ─────────────────────────────────────────────────
     agent_info = {
-        "orchestrator":    ("🧠 Orchestrator",    "Coordinates all agents, makes final trade decisions"),
-        "signal_agent":    ("🎯 Signal Agent",     "Generates MTF confluence signals (100pt scoring)"),
-        "indicators":      ("📊 Indicators Agent", "VWAP, EQH/EQL, OTE, order flow metrics"),
-        "analysis_agent":  ("🔍 Analysis Agent",   "Per-trade evaluation and insight generation"),
-        "config_optimizer":("⚙️ Config Optimizer", "Optimizes parameters based on trade outcomes"),
+        "orchestrator":    ("🧠 Orchestrator",    "Schedules and coordinates all agents"),
+        "signal_agent":    ("🎯 Signal Agent",     "Claude claude-haiku-4-5 — MTF confluence, 100pt scoring"),
+        "indicators":      ("📊 Indicators Agent", "VWAP, EQH/EQL, OTE, delta, order flow (no API cost)"),
+        "analysis_agent":  ("🔍 Analysis Agent",   "Per-trade evaluation — Sprint 3"),
+        "config_optimizer":("⚙️ Config Optimizer", "Parameter optimization — Sprint 4"),
     }
 
     status_data = _load_agent_status()
+    # Merge live scheduler data
+    for key in agent_info:
+        if key in orch_status and isinstance(orch_status[key], dict):
+            status_data[key] = {**status_data.get(key, {}), **orch_status[key]}
 
-    cols = st.columns([2, 2, 1, 1, 1, 1])
+    cols = st.columns([2, 3, 1, 1, 2])
     cols[0].markdown("**Agent**")
     cols[1].markdown("**Role**")
     cols[2].markdown("**Status**")
     cols[3].markdown("**Runs**")
     cols[4].markdown("**Last Run**")
-    cols[5].markdown("**Enable**")
     st.divider()
 
-    changed = False
     for agent_key, (display_name, role) in agent_info.items():
         s = status_data.get(agent_key, {})
-        c0, c1, c2, c3, c4, c5 = st.columns([2, 2, 1, 1, 1, 1])
+        c0, c1, c2, c3, c4 = st.columns([2, 3, 1, 1, 2])
         c0.markdown(f"**{display_name}**")
         c1.caption(role)
         c2.markdown(_status_chip(s.get("status", "idle")), unsafe_allow_html=True)
         c3.write(s.get("runs", 0))
-
         last = s.get("last_run")
         c4.caption(last[:16] if last else "—")
 
-        new_enabled = c5.toggle(
-            "on", value=s.get("enabled", False),
-            key=f"toggle_{agent_key}",
-            label_visibility="collapsed",
-        )
-        if new_enabled != s.get("enabled", False):
-            status_data[agent_key]["enabled"] = new_enabled
-            changed = True
-
-    if changed:
-        _save_agent_status(status_data)
-        st.toast("Agent settings saved", icon="✅")
-
     st.divider()
-    st.caption(
-        "⚠️ Agents are currently in **Sprint 1 (passive mode)** — "
-        "they read data and log analysis but do not auto-execute trades. "
-        "Full agent scheduling arrives in Sprint 2."
-    )
+
+    # ── Recent orchestrator log ────────────────────────────────────────────────
+    with st.expander("📋 Orchestrator Activity Log (last 10)"):
+        log_entries = orchestrator.get_orch_log(10)
+        if log_entries:
+            for entry in reversed(log_entries):
+                ts   = str(entry.get("timestamp", ""))[:16]
+                job  = entry.get("job", entry.get("event", "?"))
+                stat = entry.get("status", entry.get("event", "?"))
+                score = entry.get("score", "")
+                score_str = f" | score={score}" if score != "" else ""
+                err  = entry.get("error", "")
+                err_str = f" ⚠ {err[:60]}" if err else ""
+                st.caption(f"{ts} — **{job}** → {stat}{score_str}{err_str}")
+        else:
+            st.caption("No activity yet — start the scheduler or run manually.")
 
 
 def _tab_config_history() -> None:
