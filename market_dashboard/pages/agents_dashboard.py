@@ -116,15 +116,46 @@ def _tab_agent_status() -> None:
                 st.success(f"Done — {outcome}")
             st.rerun()
 
+    # Manual run buttons for analysis + optimizer
+    with st.container(border=True):
+        st.caption("Manual Agent Triggers")
+        b1, b2 = st.columns(2)
+        if b1.button("🔍 Run Analysis Agent", key="btn_analysis",
+                     help="Evaluate open trades + write insights"):
+            with st.spinner("Running Analysis Agent (claude-sonnet-4-6)…"):
+                result = orchestrator.run_once("analysis")
+            ins = result.get("insights_written", 0)
+            ev  = result.get("trades_evaluated", 0)
+            if result.get("outcome") == "error":
+                st.error(f"Error: {result.get('error','?')}")
+            else:
+                st.success(f"Done — {ev} trade(s) evaluated, {ins} insight(s) written")
+            st.rerun()
+
+        if b2.button("⚙️ Run Config Optimizer", key="btn_optimizer",
+                     help="Daily parameter review (uses adaptive thinking)"):
+            with st.spinner("Running Config Optimizer (claude-sonnet-4-6 + thinking)…"):
+                result = orchestrator.run_once("optimizer")
+            ch = result.get("changes_applied", 0)
+            if result.get("outcome") == "error":
+                st.error(f"Error: {result.get('error','?')}")
+            elif result.get("outcome") == "skipped":
+                st.warning(f"Skipped — {result.get('reason','?')}")
+            else:
+                st.success(f"Done — {ch} change(s) applied")
+                if result.get("summary"):
+                    st.info(result["summary"][:400])
+            st.rerun()
+
     st.divider()
 
     # ── Per-agent status table ─────────────────────────────────────────────────
     agent_info = {
         "orchestrator":    ("🧠 Orchestrator",    "Schedules and coordinates all agents"),
-        "signal_agent":    ("🎯 Signal Agent",     "Claude claude-haiku-4-5 — MTF confluence, 100pt scoring"),
-        "indicators":      ("📊 Indicators Agent", "VWAP, EQH/EQL, OTE, delta, order flow (no API cost)"),
-        "analysis_agent":  ("🔍 Analysis Agent",   "Per-trade evaluation — Sprint 3"),
-        "config_optimizer":("⚙️ Config Optimizer", "Parameter optimization — Sprint 4"),
+        "signal_agent":    ("🎯 Signal Agent",     "claude-haiku-4-5 — MTF confluence, 100pt scoring"),
+        "indicators":      ("📊 Indicators Agent", "VWAP, EQH/EQL, OTE, delta — no API cost"),
+        "analysis_agent":  ("🔍 Analysis Agent",   "claude-sonnet-4-6 — trade evaluation + insights"),
+        "config_optimizer":("⚙️ Config Optimizer", "claude-sonnet-4-6 + thinking — daily param tuning"),
     }
 
     status_data = _load_agent_status()
@@ -264,13 +295,87 @@ def _tab_param_limits() -> None:
     st.dataframe(rules_df, use_container_width=True, hide_index=True)
 
 
+def _tab_insights() -> None:
+    st.subheader("Analysis Agent Insights")
+    path = _LOGS / "insights_log.json"
+    if not path.exists():
+        st.info("No insights yet — run the Analysis Agent to generate them.")
+        return
+    try:
+        insights = json.loads(path.read_text())
+    except Exception:
+        st.error("Failed to load insights_log.json")
+        return
+
+    if not insights:
+        st.info("Insights log is empty.")
+        return
+
+    for ins in reversed(insights[-20:]):
+        ts = str(ins.get("logged_at", ins.get("timestamp", "")))[:16]
+        outcome = ins.get("outcome", "?")
+        color   = {"WIN": "green", "LOSS": "red", "PARTIAL": "orange"}.get(outcome, "gray")
+        conf    = ins.get("confidence", "?")
+
+        with st.expander(
+            f"{ts} — **{outcome}** (trade {str(ins.get('trade_id','?'))[:8]}) "
+            f"— confidence: {conf}/10",
+            expanded=False,
+        ):
+            st.markdown(f"**Root cause:** {ins.get('root_cause','—')}")
+            fq = ins.get("factor_quality", {})
+            if fq:
+                cols = st.columns(4)
+                for i, (k, v) in enumerate(fq.items()):
+                    c = {"aligned": "green", "conflicting": "red", "neutral": "gray"}.get(v, "gray")
+                    cols[i % 4].markdown(
+                        f'<span style="color:{c}">**{k}**: {v}</span>',
+                        unsafe_allow_html=True,
+                    )
+            st.markdown(f"**Recommendation:** {ins.get('recommendation','—')}")
+            if ins.get("pattern"):
+                st.caption(f"Pattern: {ins['pattern']}")
+
+
+def _tab_optimizer_log() -> None:
+    st.subheader("Config Optimizer Log")
+    path = _LOGS / "config_optimizer_log.json"
+    if not path.exists():
+        st.info("Config Optimizer has not run yet.")
+        return
+    try:
+        entries = json.loads(path.read_text())
+    except Exception:
+        st.error("Failed to read optimizer log")
+        return
+
+    for entry in reversed(entries[-10:]):
+        ts      = str(entry.get("started_at", ""))[:16]
+        outcome = entry.get("outcome", "?")
+        changes = entry.get("changes_applied", 0)
+        icon    = "✅" if outcome == "done" else ("⏭️" if outcome == "skipped" else "❌")
+
+        with st.expander(f"{ts} — {icon} {outcome} — {changes} change(s)", expanded=False):
+            if entry.get("reason"):
+                st.caption(f"Reason: {entry['reason']}")
+            if entry.get("summary"):
+                st.markdown(entry["summary"])
+            st.caption(
+                f"Tools called: {entry.get('tool_calls',0)} | "
+                f"Dry runs: {entry.get('dry_runs_run',0)} | "
+                f"Finished: {str(entry.get('finished_at',''))[:16]}"
+            )
+
+
 # ─── main ─────────────────────────────────────────────────────────────────────
 
 def app() -> None:
     st.title("🤖 AI Agents")
 
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "🟢 Agent Status",
+        "💡 Insights",
+        "⚙️ Optimizer Log",
         "📋 Change History",
         "🧪 Dry Run",
         "📏 Parameter Limits",
@@ -279,8 +384,12 @@ def app() -> None:
     with tab1:
         _tab_agent_status()
     with tab2:
-        _tab_config_history()
+        _tab_insights()
     with tab3:
-        _tab_dry_run()
+        _tab_optimizer_log()
     with tab4:
+        _tab_config_history()
+    with tab5:
+        _tab_dry_run()
+    with tab6:
         _tab_param_limits()

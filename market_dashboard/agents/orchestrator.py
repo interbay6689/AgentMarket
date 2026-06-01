@@ -37,7 +37,7 @@ try:
 except ImportError:
     _APScheduler_available = False
 
-from agents import indicators_agent, signal_agent
+from agents import indicators_agent, signal_agent, analysis_agent, config_optimizer
 
 IL_TZ  = pytz.timezone("Asia/Jerusalem")
 _LOGS  = _MD / "logs"
@@ -129,6 +129,35 @@ def _job_indicators_then_signal() -> None:
         })
 
 
+def _job_analysis() -> None:
+    """Scheduled job: run analysis_agent (auto-evaluate trades + write insights)."""
+    try:
+        result = analysis_agent.run()
+        _append_orch_log({
+            "job":     "analysis_agent",
+            "status":  result.get("outcome", "?"),
+            "insights": result.get("insights_written", 0),
+            "evaluated": result.get("trades_evaluated", 0),
+        })
+    except Exception as e:
+        logger.error("analysis_agent job failed: %s", e)
+        _append_orch_log({"job": "analysis_agent", "status": "error", "error": str(e)})
+
+
+def _job_config_optimizer() -> None:
+    """Scheduled job: daily config optimization."""
+    try:
+        result = config_optimizer.run()
+        _append_orch_log({
+            "job":     "config_optimizer",
+            "status":  result.get("outcome", "?"),
+            "changes": result.get("changes_applied", 0),
+        })
+    except Exception as e:
+        logger.error("config_optimizer job failed: %s", e)
+        _append_orch_log({"job": "config_optimizer", "status": "error", "error": str(e)})
+
+
 # ─── Scheduler lifecycle ───────────────────────────────────────────────────────
 
 def start(
@@ -159,6 +188,24 @@ def start(
             id="indicators_signal",
             replace_existing=True,
             misfire_grace_time=60,
+        )
+
+        # Analysis agent every 60 minutes
+        _scheduler.add_job(
+            _job_analysis,
+            trigger=IntervalTrigger(minutes=60),
+            id="analysis_agent",
+            replace_existing=True,
+            misfire_grace_time=300,
+        )
+
+        # Config optimizer daily at 07:00 Israel time
+        _scheduler.add_job(
+            _job_config_optimizer,
+            trigger=CronTrigger(hour=7, minute=0, timezone=IL_TZ),
+            id="config_optimizer",
+            replace_existing=True,
+            misfire_grace_time=1800,
         )
 
         _scheduler.start()
@@ -203,6 +250,10 @@ def run_once(agent_name: str) -> dict:
         elif agent_name == "indicators_signal":
             _job_indicators()
             result = signal_agent.run()
+        elif agent_name == "analysis":
+            result = analysis_agent.run()
+        elif agent_name == "optimizer":
+            result = config_optimizer.run(force=True)
         else:
             result = {"error": f"Unknown agent: {agent_name}"}
 
