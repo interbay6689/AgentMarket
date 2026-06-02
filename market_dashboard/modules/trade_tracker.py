@@ -9,6 +9,7 @@ Data flow:
 from __future__ import annotations
 
 import json
+import threading
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -16,6 +17,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytz
+
+# Protects all CSV read/write operations against concurrent access from
+# APScheduler background threads and the Streamlit main thread.
+_csv_lock = threading.Lock()
 
 _MD   = Path(__file__).resolve().parents[1]
 _ROOT = _MD.parent
@@ -129,53 +134,54 @@ def log_trade(sig: dict) -> bool:
     if (sig.get("rr") or 0) < settings.get("min_rr", 0):
         return False
 
-    _ensure_log()
-    df = load_trade_log()
+    with _csv_lock:
+        _ensure_log()
+        df = load_trade_log()
 
-    now_il = datetime.now(IL_TZ)
-    dedup  = settings.get("dedup_minutes", 30)
+        now_il = datetime.now(IL_TZ)
+        dedup  = settings.get("dedup_minutes", 30)
 
-    # Deduplication: same direction already logged within dedup window
-    if not df.empty and "timestamp" in df.columns and "direction" in df.columns:
-        cutoff = pd.Timestamp(now_il).tz_convert("UTC") - pd.Timedelta(minutes=dedup)
-        recent = df[df["timestamp"] >= cutoff]
-        if not recent.empty and (recent["direction"] == sig.get("direction")).any():
-            return False
+        # Deduplication: same direction already logged within dedup window
+        if not df.empty and "timestamp" in df.columns and "direction" in df.columns:
+            cutoff = pd.Timestamp(now_il).tz_convert("UTC") - pd.Timedelta(minutes=dedup)
+            recent = df[df["timestamp"] >= cutoff]
+            if not recent.empty and (recent["direction"] == sig.get("direction")).any():
+                return False
 
-    fpts = _extract_factor_pts(sig.get("factors", []))
-    row = {
-        "id":                 str(uuid.uuid4())[:8],
-        "timestamp":          now_il.isoformat(),
-        "date":               now_il.strftime("%Y-%m-%d"),
-        "time_il":            now_il.strftime("%H:%M"),
-        "direction":          sig.get("direction"),
-        "entry":              sig.get("entry"),
-        "stop":               sig.get("stop"),
-        "target":             sig.get("target"),
-        "partial_exit":       sig.get("partial_exit"),
-        "rr":                 sig.get("rr"),
-        "confidence":         sig.get("confidence"),
-        "long_pts":           sig.get("long_pts"),
-        "short_pts":          sig.get("short_pts"),
-        "htf_bias":           sig.get("htf_bias"),
-        "htf_strength":       sig.get("htf_strength"),
-        "nearest_zone_score": sig.get("nearest_zone_score"),
-        "delta_dir":          sig.get("delta_dir"),
-        "session_name":       sig.get("session", {}).get("name", ""),
-        "session_quality":    sig.get("session_quality"),
-        "final_score":        sig.get("final_score"),
-        "ml_prediction":      sig.get("ml_prediction"),
-        **fpts,
-        "outcome":            "OPEN",
-        "exit_price":         None,
-        "actual_rr":          None,
-        "exit_time":          None,
-        "notes":              "",
-    }
+        fpts = _extract_factor_pts(sig.get("factors", []))
+        row = {
+            "id":                 str(uuid.uuid4())[:8],
+            "timestamp":          now_il.isoformat(),
+            "date":               now_il.strftime("%Y-%m-%d"),
+            "time_il":            now_il.strftime("%H:%M"),
+            "direction":          sig.get("direction"),
+            "entry":              sig.get("entry"),
+            "stop":               sig.get("stop"),
+            "target":             sig.get("target"),
+            "partial_exit":       sig.get("partial_exit"),
+            "rr":                 sig.get("rr"),
+            "confidence":         sig.get("confidence"),
+            "long_pts":           sig.get("long_pts"),
+            "short_pts":          sig.get("short_pts"),
+            "htf_bias":           sig.get("htf_bias"),
+            "htf_strength":       sig.get("htf_strength"),
+            "nearest_zone_score": sig.get("nearest_zone_score"),
+            "delta_dir":          sig.get("delta_dir"),
+            "session_name":       sig.get("session", {}).get("name", ""),
+            "session_quality":    sig.get("session_quality"),
+            "final_score":        sig.get("final_score"),
+            "ml_prediction":      sig.get("ml_prediction"),
+            **fpts,
+            "outcome":            "OPEN",
+            "exit_price":         None,
+            "actual_rr":          None,
+            "exit_time":          None,
+            "notes":              "",
+        }
 
-    updated = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
-    updated.to_csv(TRADE_LOG_PATH, index=False)
-    return True
+        updated = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+        updated.to_csv(TRADE_LOG_PATH, index=False)
+        return True
 
 
 def update_trade_manual(
@@ -185,24 +191,25 @@ def update_trade_manual(
     notes: str = "",
 ) -> bool:
     """Manually set outcome for a trade by its id field."""
-    df = load_trade_log()
-    mask = df["id"] == trade_id
-    if not mask.any():
-        return False
-    idx = df[mask].index[0]
-    entry = float(df.at[idx, "entry"]) if pd.notna(df.at[idx, "entry"]) else None
-    stop  = float(df.at[idx, "stop"])  if pd.notna(df.at[idx, "stop"])  else None
+    with _csv_lock:
+        df = load_trade_log()
+        mask = df["id"] == trade_id
+        if not mask.any():
+            return False
+        idx = df[mask].index[0]
+        entry = float(df.at[idx, "entry"]) if pd.notna(df.at[idx, "entry"]) else None
+        stop  = float(df.at[idx, "stop"])  if pd.notna(df.at[idx, "stop"])  else None
 
-    df.at[idx, "outcome"]   = outcome
-    df.at[idx, "exit_time"] = datetime.now(IL_TZ).strftime("%Y-%m-%d %H:%M")
-    if notes:
-        df.at[idx, "notes"] = notes
-    if exit_price is not None:
-        df.at[idx, "exit_price"] = exit_price
-        if entry is not None and stop is not None and abs(entry - stop) > 0:
-            df.at[idx, "actual_rr"] = round(abs(exit_price - entry) / abs(entry - stop), 2)
-    df.to_csv(TRADE_LOG_PATH, index=False)
-    return True
+        df.at[idx, "outcome"]   = outcome
+        df.at[idx, "exit_time"] = datetime.now(IL_TZ).strftime("%Y-%m-%d %H:%M")
+        if notes:
+            df.at[idx, "notes"] = notes
+        if exit_price is not None:
+            df.at[idx, "exit_price"] = exit_price
+            if entry is not None and stop is not None and abs(entry - stop) > 0:
+                df.at[idx, "actual_rr"] = round(abs(exit_price - entry) / abs(entry - stop), 2)
+        df.to_csv(TRADE_LOG_PATH, index=False)
+        return True
 
 
 # ─── Auto-Evaluation ──────────────────────────────────────────────────────────
@@ -215,85 +222,86 @@ def evaluate_open_trades(df_price: pd.DataFrame) -> int:
     """
     if df_price.empty:
         return 0
-    _ensure_log()
-    df = load_trade_log()
-    open_mask = df["outcome"] == "OPEN"
-    if not open_mask.any():
-        return 0
+    with _csv_lock:
+        _ensure_log()
+        df = load_trade_log()
+        open_mask = df["outcome"] == "OPEN"
+        if not open_mask.any():
+            return 0
 
-    time_col = "datetime_il" if "datetime_il" in df_price.columns else "datetime"
-    updated_count = 0
+        time_col = "datetime_il" if "datetime_il" in df_price.columns else "datetime"
+        updated_count = 0
 
-    for idx in df[open_mask].index:
-        row = df.loc[idx]
-        direction = row.get("direction")
-        entry     = float(row["entry"])        if pd.notna(row.get("entry"))        else None
-        stop      = float(row["stop"])         if pd.notna(row.get("stop"))         else None
-        target    = float(row["target"])       if pd.notna(row.get("target"))       else None
-        partial   = float(row["partial_exit"]) if pd.notna(row.get("partial_exit")) else None
+        for idx in df[open_mask].index:
+            row = df.loc[idx]
+            direction = row.get("direction")
+            entry     = float(row["entry"])        if pd.notna(row.get("entry"))        else None
+            stop      = float(row["stop"])         if pd.notna(row.get("stop"))         else None
+            target    = float(row["target"])       if pd.notna(row.get("target"))       else None
+            partial   = float(row["partial_exit"]) if pd.notna(row.get("partial_exit")) else None
 
-        if not all([entry, stop, target, direction]):
-            continue
+            if not all([entry, stop, target, direction]):
+                continue
 
-        # Filter price bars after trade entry
-        entry_ts = row.get("timestamp")
-        bars = df_price.copy()
-        if pd.notna(entry_ts):
-            try:
-                ets = pd.to_datetime(entry_ts, utc=True).tz_convert(None)
-                bar_ts = pd.to_datetime(bars[time_col], utc=True, errors="coerce").dt.tz_convert(None)
-                bars = bars[bar_ts >= ets]
-            except Exception:
-                pass
+            # Filter price bars after trade entry
+            entry_ts = row.get("timestamp")
+            bars = df_price.copy()
+            if pd.notna(entry_ts):
+                try:
+                    ets = pd.to_datetime(entry_ts, utc=True).tz_convert(None)
+                    bar_ts = pd.to_datetime(bars[time_col], utc=True, errors="coerce").dt.tz_convert(None)
+                    bars = bars[bar_ts >= ets]
+                except Exception:
+                    pass
 
-        if bars.empty:
-            continue
+            if bars.empty:
+                continue
 
-        outcome    = None
-        exit_price = None
-        exit_time  = None
-        hit_partial = False
+            outcome    = None
+            exit_price = None
+            exit_time  = None
+            hit_partial = False
 
-        for _, bar in bars.iterrows():
-            high = float(bar["high"])
-            low  = float(bar["low"])
-            bt   = str(bar.get(time_col, ""))
+            for _, bar in bars.iterrows():
+                high = float(bar["high"])
+                low  = float(bar["low"])
+                bt   = str(bar.get(time_col, ""))
 
-            if direction == "LONG":
-                if low <= stop:
-                    outcome, exit_price, exit_time = "LOSS", stop, bt
-                    break
-                if high >= target:
-                    outcome, exit_price, exit_time = "WIN", target, bt
-                    break
-                if partial and high >= partial:
-                    hit_partial = True
-            else:  # SHORT
-                if high >= stop:
-                    outcome, exit_price, exit_time = "LOSS", stop, bt
-                    break
-                if low <= target:
-                    outcome, exit_price, exit_time = "WIN", target, bt
-                    break
-                if partial and low <= partial:
-                    hit_partial = True
+                if direction == "LONG":
+                    if low <= stop:
+                        outcome, exit_price, exit_time = "LOSS", stop, bt
+                        break
+                    if high >= target:
+                        outcome, exit_price, exit_time = "WIN", target, bt
+                        break
+                    if partial and high >= partial:
+                        hit_partial = True
+                else:  # SHORT
+                    if high >= stop:
+                        outcome, exit_price, exit_time = "LOSS", stop, bt
+                        break
+                    if low <= target:
+                        outcome, exit_price, exit_time = "WIN", target, bt
+                        break
+                    if partial and low <= partial:
+                        hit_partial = True
 
-        if outcome is None and hit_partial:
-            outcome = "PARTIAL"
+            if outcome is None and hit_partial:
+                outcome = "PARTIAL"
 
-        if outcome is not None:
-            actual_rr = None
-            if exit_price and entry and stop and abs(entry - stop) > 0:
-                actual_rr = round(abs(exit_price - entry) / abs(entry - stop), 2)
-            df.at[idx, "outcome"]    = outcome
-            df.at[idx, "exit_price"] = exit_price
-            df.at[idx, "actual_rr"]  = actual_rr
-            df.at[idx, "exit_time"]  = exit_time
-            updated_count += 1
+            if outcome is not None:
+                actual_rr = None
+                if exit_price and entry and stop and abs(entry - stop) > 0:
+                    actual_rr = round(abs(exit_price - entry) / abs(entry - stop), 2)
+                df.at[idx, "outcome"]    = outcome
+                df.at[idx, "exit_price"] = exit_price
+                df.at[idx, "actual_rr"]  = actual_rr
+                df.at[idx, "exit_time"]  = exit_time
+                updated_count += 1
 
-    if updated_count:
-        df.to_csv(TRADE_LOG_PATH, index=False)
-    return updated_count
+        if updated_count:
+            df.to_csv(TRADE_LOG_PATH, index=False)
+        return updated_count
 
 
 # ─── Analytics ────────────────────────────────────────────────────────────────

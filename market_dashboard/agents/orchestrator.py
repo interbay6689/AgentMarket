@@ -5,8 +5,9 @@ Uses APScheduler for background execution.
 Schedule (default):
   - indicators_agent:  every 5 minutes (always)
   - signal_agent:      every 5 minutes, after indicators (only if composite_score ≥ 65)
-  - analysis_agent:    every 60 minutes (sprint 3, placeholder)
-  - config_optimizer:  daily at 07:00 Israel time (sprint 4, placeholder)
+  - analysis_agent:    every 60 minutes
+  - config_optimizer:  daily at 07:00 Israel time
+  - daily_pipeline:    daily at 07:30 Israel time (runs final_score.py backend)
 
 Thread-safety: all state writes use atomic JSON overwrites.
 The Streamlit UI reads agent_status.json (written by each agent).
@@ -164,6 +165,30 @@ def _job_config_optimizer() -> None:
         _append_orch_log({"job": "config_optimizer", "status": "error", "error": str(e)})
 
 
+def _job_daily_pipeline() -> None:
+    """Scheduled job: run the daily scores_news backend pipeline at 07:30 IL."""
+    import subprocess
+    pipeline = _ROOT / "scores_news" / "cat_scores" / "final_score.py"
+    if not pipeline.exists():
+        _append_orch_log({"job": "daily_pipeline", "status": "skipped", "reason": "pipeline not found"})
+        return
+    try:
+        proc = subprocess.run(
+            ["python", str(pipeline)],
+            capture_output=True, text=True, timeout=300,
+        )
+        status = "done" if proc.returncode == 0 else "error"
+        _append_orch_log({
+            "job":    "daily_pipeline",
+            "status": status,
+            "stdout": proc.stdout[-500:] if proc.stdout else "",
+            "stderr": proc.stderr[-300:] if proc.stderr else "",
+        })
+    except Exception as e:
+        logger.error("daily_pipeline job failed: %s", e)
+        _append_orch_log({"job": "daily_pipeline", "status": "error", "error": str(e)})
+
+
 # ─── Scheduler lifecycle ───────────────────────────────────────────────────────
 
 def start(
@@ -210,6 +235,15 @@ def start(
             _job_config_optimizer,
             trigger=CronTrigger(hour=7, minute=0, timezone=IL_TZ),
             id="config_optimizer",
+            replace_existing=True,
+            misfire_grace_time=1800,
+        )
+
+        # Daily backend pipeline (final_score.py) at 07:30 Israel time
+        _scheduler.add_job(
+            _job_daily_pipeline,
+            trigger=CronTrigger(hour=7, minute=30, timezone=IL_TZ),
+            id="daily_pipeline",
             replace_existing=True,
             misfire_grace_time=1800,
         )
