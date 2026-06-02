@@ -53,6 +53,15 @@ def _load_score_log() -> pd.DataFrame:
 
 
 def _load_ml_prediction() -> int:
+    # Guard: model is unreliable when trained on < 30 samples
+    merged = _ML_DIR / "merged_scores_mes.csv"
+    if merged.exists():
+        try:
+            if sum(1 for _ in open(merged)) - 1 < 30:
+                return 0
+        except Exception:
+            return 0
+
     log = _ML_DIR / "ml_performance_log.csv"
     if not log.exists():
         return 0

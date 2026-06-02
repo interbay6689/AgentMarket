@@ -49,11 +49,28 @@ def calculate_sentiment_score(df: pd.DataFrame) -> tuple[int, str]:
         return 50, "No articles to score"
 
     # שקילה: positive = +1, neutral = 0.5, negative = 0
-    score = round(((pos * 1.0) + (neu * 0.5)) / total * 100)
+    vader_score = round(((pos * 1.0) + (neu * 0.5)) / total * 100)
+    vader_detail = f"✅ {pos}, ❌ {neg}, ⚪ {neu} (סה״כ: {total})"
 
-    explanation = (
-        f"✅ חיוביות: {pos}, ❌ שליליות: {neg}, ⚪ נייטרליות: {neu}, סה״כ: {total}"
-    )
+    # Attempt Claude-based economic category scoring (degrades gracefully)
+    try:
+        from scores_news.cat_scores.category_scorer import score_articles_with_claude
+        claude_score, breakdown, cat_explanation = score_articles_with_claude(articles)
+    except Exception:
+        claude_score, cat_explanation = None, ""
+
+    if claude_score is not None:
+        # Blend: 55% VADER (breadth across many articles) + 45% Claude (depth/accuracy)
+        score = round(0.55 * vader_score + 0.45 * claude_score)
+        explanation = (
+            f"VADER: {vader_detail} | "
+            f"Claude categories: {cat_explanation} | "
+            f"Blended score: {score}"
+        )
+    else:
+        score = vader_score
+        explanation = f"VADER: {vader_detail}"
+
     return score, explanation
 
 
