@@ -3,7 +3,12 @@ import logging
 import time
 from datetime import datetime
 from pathlib import Path
-import feedparser
+try:
+    import feedparser
+    _feedparser_ok = True
+except ImportError:
+    _feedparser_ok = False
+    feedparser = None  # type: ignore
 from scores_news.cat_scores.nlp_utils import analyze_articles
 from scores_news.utils.cache import RedisCache
 import pandas as pd
@@ -39,11 +44,18 @@ CSV_PATH = str(_ROOT / "scores_news" / "logs" / "sentiment_new.csv")
 cache = RedisCache()
 
 # קריאת פידים מתוך קובץ yaml
-import yaml
+try:
+    import yaml
+    _yaml_ok = True
+except ImportError:
+    _yaml_ok = False
 
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "..", "config", "sources.yaml")
-with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-    feed_config = yaml.safe_load(f)
+if _yaml_ok and os.path.exists(CONFIG_PATH):
+    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        feed_config = yaml.safe_load(f)
+else:
+    feed_config = {"rss_feeds": {"sentiment": []}}
 
 
 def fetch_feed(url):
