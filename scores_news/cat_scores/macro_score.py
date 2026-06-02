@@ -1,10 +1,24 @@
-import yaml
 import os
-import feedparser
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
-from scores_news.cat_scores.nlp_utils import analyze_articles
+
+try:
+    import yaml
+    _yaml_ok = True
+except ImportError:
+    _yaml_ok = False
+
+try:
+    import feedparser
+    _feedparser_ok = True
+except ImportError:
+    _feedparser_ok = False
+
+try:
+    from scores_news.cat_scores.nlp_utils import analyze_articles
+except ImportError:
+    from nlp_utils import analyze_articles
 
 # ---------------------------------------------------------------
 # נתיב בסיס - משמש למציאת sources.yaml יחסית לפרויקט
@@ -13,13 +27,12 @@ CONFIG_PATH = BASE_DIR / "scores_news" / "config" / "sources.yaml"
 
 
 def load_macro_feeds(config_path: Path | None = None) -> list:
-    """טוען קישורי RSS של macro מתוך sources.yaml.
-
-    אם לא סופק נתיב, ישתמש בנתיב יחסית תחת CONFIG_PATH.
-    """
+    """טוען קישורי RSS של macro מתוך sources.yaml."""
+    if not _yaml_ok:
+        return []
     path = Path(config_path) if config_path else CONFIG_PATH
     if not path.exists():
-        raise FileNotFoundError(f"sources.yaml לא נמצא: {path}")
+        return []
     with open(path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
     return config.get("rss_feeds", {}).get("macro", [])
@@ -27,6 +40,8 @@ def load_macro_feeds(config_path: Path | None = None) -> list:
 
 def fetch_macro_news():
     """משוך את כל הודעות המאקרו לפי RSS"""
+    if not _feedparser_ok:
+        return pd.DataFrame()
     urls = load_macro_feeds()
     all_articles = []
 

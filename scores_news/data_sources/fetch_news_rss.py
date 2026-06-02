@@ -5,9 +5,19 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
-import feedparser
+try:
+    import feedparser
+    _feedparser_ok = True
+except ImportError:
+    _feedparser_ok = False
+
+try:
+    import yaml
+    _yaml_ok = True
+except ImportError:
+    _yaml_ok = False
+
 import pandas as pd
-import yaml
 
 _ROOT = Path(__file__).resolve().parents[2]
 
@@ -75,6 +85,9 @@ def _enrich_full_text(articles: list) -> list:
 
 def load_sentiment_feeds(config_path=None):
     """טוען קישורי RSS לפי קטגוריית sentiment"""
+    if not _yaml_ok:
+        logger.warning("pyyaml not installed — returning empty feed list")
+        return []
     if config_path is None:
         config_path = _ROOT / "scores_news" / "config" / "sources.yaml"
     with open(config_path, "r", encoding="utf-8") as f:
@@ -83,6 +96,9 @@ def load_sentiment_feeds(config_path=None):
 
 def fetch_feed_articles(feed_url, cache, timeout=30, retries=1):
     """משיכת כתבות מ־RSS כולל שימוש ב־Redis Cache"""
+    if not _feedparser_ok:
+        logger.warning("feedparser not installed — skipping %s", feed_url)
+        return []
 
     headers = {
         "User-Agent": (

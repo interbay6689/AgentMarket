@@ -1,12 +1,26 @@
 # futures_vix_score.py
 
 
-import feedparser
-import yaml
 import pandas as pd
 from pathlib import Path
-from scores_news.cat_scores.nlp_utils import analyze_articles
 import yfinance as yf
+
+try:
+    import feedparser
+    _feedparser_ok = True
+except ImportError:
+    _feedparser_ok = False
+
+try:
+    import yaml
+    _yaml_ok = True
+except ImportError:
+    _yaml_ok = False
+
+try:
+    from scores_news.cat_scores.nlp_utils import analyze_articles
+except ImportError:
+    from nlp_utils import analyze_articles
 
 # ---------------------------------------------------------------
 # נתיב בסיס למציאת sources.yaml באופן יחסי
@@ -14,19 +28,20 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 CONFIG_PATH = BASE_DIR / "scores_news" / "config" / "sources.yaml"
 
 def load_futures_feeds(config_path: Path | None = None) -> list:
-    """טוען קישורי RSS של futures/vix מתוך sources.yaml.
-
-    אם לא סופק נתיב, ישתמש בנתיב ברירת מחדל.
-    """
+    """טוען קישורי RSS של futures/vix מתוך sources.yaml."""
+    if not _yaml_ok:
+        return []
     path = Path(config_path) if config_path else CONFIG_PATH
     if not path.exists():
-        raise FileNotFoundError(f"sources.yaml לא נמצא: {path}")
+        return []
     with open(path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
     return config.get("rss_feeds", {}).get("futures_vix", [])
 
 
 def fetch_futures_news():
+    if not _feedparser_ok:
+        return pd.DataFrame()
     urls = load_futures_feeds()
     articles = []
     for url in urls:
