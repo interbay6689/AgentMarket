@@ -102,32 +102,37 @@ def _render_signal_readiness(sig: dict):
     pts_to_go = max(0, thr - best_pts)
     lead_to_go = max(0, _DIRECTION_LEAD - lead)
 
+    # Build suffix strings before the f-string to avoid conditional HTML inside {}
+    if long_pts > short_pts:
+        long_suffix = f" — ✅ threshold met" if best_pts >= thr else f" — {pts_to_go} pts to fire"
+    else:
+        long_suffix = ""
+    if short_pts > long_pts:
+        short_suffix = f" — ✅ threshold met" if best_pts >= thr else f" — {pts_to_go} pts to fire"
+    else:
+        short_suffix = ""
+
     col1, col2 = st.columns(2)
     with col1:
-        gap_to_fire = f" — {pts_to_go} pts to fire" if best_pts < thr else " — ✅ threshold met"
         st.markdown(
-            f"""<div style="margin-bottom:4px;">
-                <span style="color:#00c853; font-size:.9em; font-weight:bold;">🟢 LONG</span>
-                <span style="color:#aaa; font-size:.85em;"> {long_pts}/{thr} pts</span>
-                {"<span style='color:#00c853; font-size:.8em;'>" + gap_to_fire + "</span>"
-                 if long_pts > short_pts else ""}
-            </div>
-            <div style="background:#222; border-radius:4px; height:10px; overflow:hidden;">
-                <div style="background:#00c853; width:{long_pct}%; height:100%;
-                            border-radius:4px;"></div>
-            </div>""",
+            f'<div style="margin-bottom:4px;">'
+            f'<span style="color:#00c853;font-size:.9em;font-weight:bold;">🟢 LONG</span>'
+            f'<span style="color:#aaa;font-size:.85em;"> {long_pts}/{thr} pts{long_suffix}</span>'
+            f'</div>'
+            f'<div style="background:#222;border-radius:4px;height:10px;overflow:hidden;">'
+            f'<div style="background:#00c853;width:{long_pct}%;height:100%;border-radius:4px;"></div>'
+            f'</div>',
             unsafe_allow_html=True,
         )
     with col2:
         st.markdown(
-            f"""<div style="margin-bottom:4px;">
-                <span style="color:#d50000; font-size:.9em; font-weight:bold;">🔴 SHORT</span>
-                <span style="color:#aaa; font-size:.85em;"> {short_pts}/{thr} pts</span>
-            </div>
-            <div style="background:#222; border-radius:4px; height:10px; overflow:hidden;">
-                <div style="background:#d50000; width:{short_pct}%; height:100%;
-                            border-radius:4px;"></div>
-            </div>""",
+            f'<div style="margin-bottom:4px;">'
+            f'<span style="color:#d50000;font-size:.9em;font-weight:bold;">🔴 SHORT</span>'
+            f'<span style="color:#aaa;font-size:.85em;"> {short_pts}/{thr} pts{short_suffix}</span>'
+            f'</div>'
+            f'<div style="background:#222;border-radius:4px;height:10px;overflow:hidden;">'
+            f'<div style="background:#d50000;width:{short_pct}%;height:100%;border-radius:4px;"></div>'
+            f'</div>',
             unsafe_allow_html=True,
         )
 
