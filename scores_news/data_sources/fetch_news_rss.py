@@ -1,6 +1,7 @@
 # fetch_news_rss.py
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
@@ -18,6 +19,59 @@ logging.basicConfig(
     format='[%(asctime)s] %(levelname)s: %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Set FETCH_FULL_TEXT=1 to extract full article body (slower but richer for Claude scoring).
+_FETCH_FULL_TEXT = os.environ.get("FETCH_FULL_TEXT", "0").strip() == "1"
+_FULL_TEXT_WORKERS = 6
+_FULL_TEXT_MAX_CHARS = 3000
+
+
+def _extract_full_text(url: str, timeout: int = 8) -> str:
+    """Extract article body text. Tries newspaper3k then BeautifulSoup."""
+    # Primary: newspaper3k
+    try:
+        from newspaper import Article
+        art = Article(url)
+        art.config.browser_user_agent = "Mozilla/5.0"
+        art.config.request_timeout = timeout
+        art.download()
+        art.parse()
+        if len(art.text) > 200:
+            return art.text[:_FULL_TEXT_MAX_CHARS]
+    except Exception:
+        pass
+
+    # Fallback: BeautifulSoup
+    try:
+        import requests
+        from bs4 import BeautifulSoup
+        resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=timeout)
+        soup = BeautifulSoup(resp.content, "html.parser")
+        paras = [p.get_text() for p in soup.find_all("p") if len(p.get_text()) > 40]
+        return "\n".join(paras)[:_FULL_TEXT_MAX_CHARS]
+    except Exception:
+        pass
+
+    return ""
+
+
+def _enrich_full_text(articles: list) -> list:
+    """Parallel full-text extraction for a list of article dicts (in-place update)."""
+    def _fetch(item):
+        idx, art = item
+        text = _extract_full_text(art.get("link", ""))
+        return idx, text
+
+    with ThreadPoolExecutor(max_workers=_FULL_TEXT_WORKERS) as pool:
+        futures = {pool.submit(_fetch, (i, a)): i for i, a in enumerate(articles)}
+        for fut in as_completed(futures):
+            try:
+                idx, text = fut.result()
+                articles[idx]["full_text"] = text
+            except Exception:
+                pass
+    return articles
+
 
 def load_sentiment_feeds(config_path=None):
     """טוען קישורי RSS לפי קטגוריית sentiment"""
@@ -52,7 +106,8 @@ def fetch_feed_articles(feed_url, cache, timeout=30, retries=1):
             "summary": entry.get("summary", ""),
             "link": entry.get("link", ""),
             "published": entry.get("published", ""),
-            "source": feed_url
+            "source": feed_url,
+            "full_text": "",
         })
 
     return articles
@@ -72,6 +127,12 @@ def fetch_all_sentiment_articles():
             all_articles.extend(articles)
         except Exception as e:
             logger.warning(f"⚠️ שגיאה בהבאת נתונים מ: {url} – {e}")
+
+    if _FETCH_FULL_TEXT and all_articles:
+        logger.info(f"📄 מוציא טקסט מלא ל-{len(all_articles)} כתבות (FETCH_FULL_TEXT=1)…")
+        all_articles = _enrich_full_text(all_articles)
+        filled = sum(1 for a in all_articles if a.get("full_text"))
+        logger.info(f"✅ טקסט מלא נמשך עבור {filled}/{len(all_articles)} כתבות")
 
     return pd.DataFrame(all_articles)
 
