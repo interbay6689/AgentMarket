@@ -68,11 +68,13 @@ def _run_script(script: Path, env: dict) -> tuple[bool, str]:
         r = subprocess.run(
             ["python", str(script)],
             capture_output=True, text=True, timeout=120,
-            cwd=str(_ROOT), env=env
+            cwd=str(_ROOT), env=env,
+            encoding="utf-8", errors="replace",
         )
-        return r.returncode == 0, (r.stdout + r.stderr).strip()[:800]
+        out = (r.stdout or "") + (r.stderr or "")
+        return r.returncode == 0, out.strip()[:800]
     except subprocess.TimeoutExpired:
-        return False, f"timeout (>2 min)"
+        return False, "timeout (>2 min)"
     except Exception as e:
         return False, str(e)
 
