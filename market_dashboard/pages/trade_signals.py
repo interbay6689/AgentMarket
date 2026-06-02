@@ -550,6 +550,18 @@ def app():
                     st.session_state["_last_logged"] = sig_hash
                     st.toast("📝 Trade logged to Journal", icon="✅")
 
+    # ── A/B Experiment auto-record ───────────────────────────────
+    # Records one signal per hour per direction to avoid refresh duplicates.
+    try:
+        from modules import ab_tracker as _ab
+        if _ab.get_active_experiment() and sig.get("direction") != "NEUTRAL":
+            ab_key = f"_ab_{sig.get('direction')}_{datetime.now().strftime('%Y-%m-%d_%H')}"
+            if not st.session_state.get(ab_key):
+                _ab.record_signal(sig)
+                st.session_state[ab_key] = True
+    except Exception:
+        pass
+
     # ── Blackout / Regime status ────────────────────────────────
     _render_blackout_banner(sig)
     _render_regime_badge(sig)
