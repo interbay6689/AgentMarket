@@ -3,9 +3,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import matplotlib
+import sys
 from pathlib import Path
 import subprocess
-import joblib
 from datetime import datetime, date
 
 matplotlib.use('Agg')
@@ -46,6 +46,7 @@ def _load_ml_prediction() -> str | None:
         df = pd.read_csv(_MERGED_PATH)
         df["date"] = pd.to_datetime(df["date"])
         latest = df.sort_values("date").iloc[-1]
+        import joblib
         model = joblib.load(_MODEL_PATH)
         X = pd.DataFrame(
             [[latest[c] for c in ["sentiment_score", "macro_score", "bonds_score",
@@ -83,7 +84,7 @@ def _make_env() -> dict:
 def _run_script(script: Path, env: dict) -> tuple[bool, str]:
     try:
         r = subprocess.run(
-            ["python", str(script)],
+            [sys.executable, str(script)],
             capture_output=True, text=True, timeout=120,
             cwd=str(_ROOT), env=env,
             encoding="utf-8", errors="replace",
@@ -410,7 +411,7 @@ def app():
                 if datetime.now().hour >= 20:
                     try:
                         r = subprocess.run(
-                            ["python",
+                            [sys.executable,
                              str(_ROOT / "scores_news" / "ml_model" / "performance_tracker.py")],
                             capture_output=True, text=True,
                             encoding="utf-8", errors="replace",
