@@ -16,7 +16,7 @@ from modules.trade_tracker import load_trade_settings, save_trade_settings
 
 
 def _tab_settings():
-    st.subheader("⚙️ הגדרות")
+    st.subheader("⚙️ Settings")
     cfg = load_config()
     th = cfg.get("thresholds", {})
 
@@ -40,9 +40,9 @@ def _tab_settings():
         w_mes = c3.number_input("MES", 0.0, 1.0, value=float(w.get("mes", 0.15)), step=0.05)
 
         st.markdown("**RSS Sources**")
-        rss = st.text_area("כתובות RSS (שורה לכל מקור)", "\n".join(cfg.get("rss_list", [])))
+        rss = st.text_area("RSS Sources (one URL per line)", "\n".join(cfg.get("rss_list", [])))
 
-        submitted = st.form_submit_button("💾 שמור הגדרות")
+        submitted = st.form_submit_button("💾 Save Settings")
         if submitted:
             total_w = w_sentiment + w_macro + w_bonds + w_vix + w_sectors + w_mes
             if abs(total_w - 1.0) > 0.01:
@@ -56,29 +56,29 @@ def _tab_settings():
                 "rss_list": [u.strip() for u in rss.splitlines() if u.strip()],
             }
             save_config(new_cfg)
-            st.success("ההגדרות נשמרו!")
+            st.success("Settings saved!")
 
 
 def _tab_alerts():
-    st.subheader("⚠️ התראות פעילות")
+    st.subheader("⚠️ Active Alerts")
     alerts_df = load_alerts()
     if alerts_df.empty:
-        st.success("✅ אין התראות פעילות כרגע.")
+        st.success("✅ No active alerts at this time.")
     else:
         st.dataframe(alerts_df, use_container_width=True)
 
     st.markdown("---")
-    st.subheader("📋 לוג התראות")
+    st.subheader("📋 Alerts Log")
     alerts_path = _ROOT / "market_dashboard" / "logs" / "alerts_log.txt"
     if alerts_path.exists():
         lines = alerts_path.read_text(encoding="utf-8").splitlines()
         st.code("\n".join(lines[-100:]), language=None)
     else:
-        st.info("לוג ריק.")
+        st.info("Log is empty.")
 
 
 def _tab_system():
-    st.subheader("🖥️ מצב מערכת")
+    st.subheader("🖥️ System Status")
 
     # Pipeline file status
     files = {
@@ -110,14 +110,14 @@ def _tab_system():
         lines = err_path.read_text(encoding="utf-8").splitlines()
         st.code("\n".join(lines[-50:]), language=None)
     else:
-        st.info("לוג שגיאות ריק.")
+        st.info("Error log is empty.")
 
 
 def _tab_sentiment_feed():
     st.subheader("📰 Sentiment Feed")
     logs_dir = _ROOT / "scores_news" / "logs"
     if not logs_dir.exists():
-        st.info("תיקיית logs לא נמצאה.")
+        st.info("Logs directory not found.")
         return
 
     csv_files = sorted(logs_dir.glob("sentiment_raw_*.csv"), reverse=True)
@@ -125,26 +125,26 @@ def _tab_sentiment_feed():
         csv_files = sorted(logs_dir.glob("*.csv"), reverse=True)
 
     if not csv_files:
-        st.info("אין קבצי sentiment_raw עדיין.")
+        st.info("No sentiment_raw files yet.")
         return
 
-    chosen = st.selectbox("בחר קובץ:", [f.name for f in csv_files])
+    chosen = st.selectbox("Select file:", [f.name for f in csv_files])
     path = logs_dir / chosen
     try:
         df = pd.read_csv(path)
         df.columns = df.columns.str.strip()
 
         if "sentiment_score" in df.columns:
-            min_score = st.slider("סנן לפי ציון מינימלי:", 0, 100, 0)
+            min_score = st.slider("Filter by minimum score:", 0, 100, 0)
             df = df[df["sentiment_score"] >= min_score]
 
-        search = st.text_input("חיפוש בכותרות:", "")
+        search = st.text_input("Search titles:", "")
         if search and "title" in df.columns:
             df = df[df["title"].str.contains(search, case=False, na=False)]
 
         st.dataframe(df.head(200), use_container_width=True)
     except Exception as e:
-        st.error(f"שגיאה בטעינת הקובץ: {e}")
+        st.error(f"Error loading file: {e}")
 
 
 def _tab_trade_tracking():
