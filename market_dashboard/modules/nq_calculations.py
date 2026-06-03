@@ -666,6 +666,141 @@ def calculate_dynamic_stop(
     return round((entry - fallback) if direction == "LONG" else (entry + fallback), 2)
 
 
+def calculate_scalp_stop(
+    df_ltf: pd.DataFrame,
+    direction: str,
+    entry: float,
+    atr_period: int = 14,
+    atr_mult: float = 1.0,
+) -> dict:
+    """
+    Scalping risk parameters derived from LTF (1m/3m/5m) ATR.
+
+    Daily ATR on NQ is ~60-120 pts — far too wide for scalping.
+    LTF ATR is ~3-12 pts, giving 3-20 pt stops appropriate for
+    1-minute to 5-minute entries.
+
+    Returns dict: entry, stop, target, partial_exit, rr, atr_ltf.
+    Returns {} on insufficient data.
+    """
+    if df_ltf.empty or len(df_ltf) < atr_period + 1:
+        return {}
+    try:
+        d = df_ltf.copy().reset_index(drop=True)
+        prev_close = d["close"].shift(1)
+        tr = pd.concat([
+            d["high"] - d["low"],
+            (d["high"] - prev_close).abs(),
+            (d["low"]  - prev_close).abs(),
+        ], axis=1).max(axis=1)
+        atr  = float(tr.rolling(atr_period).mean().iloc[-1])
+        risk = atr * atr_mult
+
+        if direction == "LONG":
+            stop         = round(entry - risk, 1)
+            partial_exit = round(entry + risk, 1)
+            target       = round(entry + risk * 2.0, 1)
+        else:
+            stop         = round(entry + risk, 1)
+            partial_exit = round(entry - risk, 1)
+            target       = round(entry - risk * 2.0, 1)
+
+        rr = round(abs(target - entry) / max(abs(entry - stop), 0.01), 2)
+        return {
+            "entry":        entry,
+            "stop":         stop,
+            "target":       target,
+            "partial_exit": partial_exit,
+            "rr":           rr,
+            "atr_ltf":      round(atr, 2),
+            "risk_pts":     round(risk, 1),
+        }
+    except Exception:
+        return {}
+
+
+def find_eqh_eql(df: pd.DataFrame, lookback: int = 50, tolerance_pts: float = 5.0) -> dict:
+    """
+    Equal Highs (EQH) and Equal Lows (EQL) — liquidity pool detector.
+
+    Where multiple swing highs cluster within tolerance_pts of each other,
+    buy-side stop orders accumulate above (EQH).  Where multiple swing lows
+    cluster, sell-side stop orders accumulate below (EQL).
+
+    Uses fractals (local max/min over 2-bar window) on the last `lookback` bars.
+    Returns {"eqh": [levels…], "eql": [levels…]} — nearest levels first.
+    """
+    if df.empty or len(df) < 5:
+        return {"eqh": [], "eql": []}
+
+    recent = df.tail(lookback).reset_index(drop=True)
+    highs  = recent["high"].values
+    lows   = recent["low"].values
+    price  = float(recent["close"].iloc[-1])
+
+    # Fractal swing highs/lows: bar[i] is extreme compared to 2 bars each side
+    swing_highs, swing_lows = [], []
+    for i in range(2, len(recent) - 2):
+        if highs[i] >= highs[i-1] and highs[i] >= highs[i-2] and highs[i] >= highs[i+1] and highs[i] >= highs[i+2]:
+            swing_highs.append(highs[i])
+        if lows[i] <= lows[i-1] and lows[i] <= lows[i-2] and lows[i] <= lows[i+1] and lows[i] <= lows[i+2]:
+            swing_lows.append(lows[i])
+
+    def _cluster(levels: list) -> list:
+        """Group near-equal levels and return the average of each cluster."""
+        if not levels:
+            return []
+        levels = sorted(levels)
+        clusters, group = [], [levels[0]]
+        for lvl in levels[1:]:
+            if lvl - group[-1] <= tolerance_pts:
+                group.append(lvl)
+            else:
+                clusters.append(round(sum(group) / len(group), 1))
+                group = [lvl]
+        clusters.append(round(sum(group) / len(group), 1))
+        return clusters
+
+    eqh_all = _cluster(swing_highs)
+    eql_all = _cluster(swing_lows)
+
+    # Sort: EQH nearest above price first, EQL nearest below price first
+    eqh = sorted((l for l in eqh_all if l >= price), key=lambda l: l - price)[:5]
+    eql = sorted((l for l in eql_all if l <= price), key=lambda l: price - l)[:5]
+    return {"eqh": eqh, "eql": eql}
+
+
+def find_swing_liquidity(df: pd.DataFrame, lookback: int = 30) -> dict:
+    """
+    Identify buy-side and sell-side liquidity from swing structure.
+
+    Buy-side liquidity = above current price (sell stops from long holders).
+    Sell-side liquidity = below current price (buy stops from short holders).
+
+    Returns {"buy_side": [levels…], "sell_side": [levels…]} closest first.
+    """
+    if df.empty or len(df) < 10:
+        return {"buy_side": [], "sell_side": []}
+
+    recent = df.tail(lookback).reset_index(drop=True)
+    price  = float(recent["close"].iloc[-1])
+    highs  = recent["high"].values
+    lows   = recent["low"].values
+
+    buy_side, sell_side = [], []
+    for i in range(1, len(recent) - 1):
+        if highs[i] > highs[i-1] and highs[i] > highs[i+1]:
+            if highs[i] > price:
+                buy_side.append(round(highs[i], 1))
+        if lows[i] < lows[i-1] and lows[i] < lows[i+1]:
+            if lows[i] < price:
+                sell_side.append(round(lows[i], 1))
+
+    buy_side  = sorted(set(buy_side), key=lambda l: l - price)[:5]
+    sell_side = sorted(set(sell_side), key=lambda l: price - l)[:5]
+    return {"buy_side": buy_side, "sell_side": sell_side}
+
+
 def session_win_rates(df_hourly: pd.DataFrame) -> pd.DataFrame:
     if df_hourly.empty:
         return pd.DataFrame()

@@ -27,9 +27,13 @@ from modules.nq_calculations import (
     get_htf_bias,
     get_support_resistance_zones,
     calculate_dynamic_stop,
+    calculate_scalp_stop,
+    find_eqh_eql,
+    find_swing_liquidity,
 )
 from modules.nq_data import (
     get_todays_nq_data,
+    get_nq_1m,
     load_nq_daily_cache,
     load_nq_hourly_cache,
     fetch_nq_15m,
@@ -139,6 +143,7 @@ def generate_signal() -> dict:
     """
     # ── data loading ────────────────────────────────────────────
     df_5m     = get_todays_nq_data()
+    df_1m     = get_nq_1m()                     # finest scalp execution TF
     df_daily  = load_nq_daily_cache()
     df_hourly = load_nq_hourly_cache()
     df_15m    = fetch_nq_15m(days_back=5)
@@ -323,19 +328,33 @@ def generate_signal() -> dict:
         direction  = "NEUTRAL"
         confidence = 0
 
-    # ── Risk management — dynamic ATR stop (regime-adjusted) ───
-    atr_mult  = 1.5 + regime.get("atr_mult_adj", 0.0)
+    # ── Risk management — scalping: LTF ATR stop ──────────────
+    # Prefer 1m ATR for tightest stop; fall back to 5m then daily.
     entry:        float = current_price
     stop:         float = np.nan
     target:       float = np.nan
     partial_exit: float = np.nan
     be_level:     float = np.nan
     rr:           float = np.nan
+    atr_ltf:      float = np.nan
 
     if direction != "NEUTRAL" and not np.isnan(entry):
-        stop = calculate_dynamic_stop(df_daily, direction, entry, atr_period=14, atr_mult=atr_mult)
-        risk = abs(entry - stop)
+        # Try 1m data first (finest scalp precision)
+        ltf_df   = df_1m if not df_1m.empty and len(df_1m) >= 15 else df_5m
+        atr_mult = 1.0 + regime.get("atr_mult_adj", 0.0)
+        scalp    = calculate_scalp_stop(ltf_df, direction, entry,
+                                        atr_period=14, atr_mult=atr_mult)
+        if scalp:
+            stop         = scalp["stop"]
+            partial_exit = scalp["partial_exit"]
+            atr_ltf      = scalp["atr_ltf"]
+            risk         = abs(entry - stop)
+        else:
+            # Fallback to daily ATR (rare: no intraday data available)
+            stop = calculate_dynamic_stop(df_daily, direction, entry, atr_period=14, atr_mult=1.5)
+            risk = abs(entry - stop)
 
+        # Target: nearest HTF zone at ≥1.5 RR, else 2× risk
         tgt = _find_zone_target(zones, entry, direction, stop=stop, min_rr=1.5)
         if tgt is not None:
             target = float(tgt)
@@ -346,8 +365,20 @@ def generate_signal() -> dict:
         if risk > 0:
             rr = round(reward / risk, 2)
 
-        partial_exit = (entry + risk) if direction == "LONG" else (entry - risk)
-        be_level     = entry  # move stop to entry after partial exit is hit
+        if np.isnan(partial_exit):
+            partial_exit = (entry + risk) if direction == "LONG" else (entry - risk)
+        be_level = entry
+
+    # ── Liquidity analysis (HTF + LTF) ────────────────────────
+    eqh_eql   = find_eqh_eql(df_15m,  lookback=60, tolerance_pts=6.0)
+    liq_15m   = find_swing_liquidity(df_15m,  lookback=40)
+    liq_1h    = find_swing_liquidity(df_hourly, lookback=30)
+    liquidity = {
+        "eqh":       eqh_eql.get("eqh", []),
+        "eql":       eqh_eql.get("eql", []),
+        "buy_side":  sorted(set(liq_15m["buy_side"]  + liq_1h["buy_side"]))[:6],
+        "sell_side": sorted(set(liq_15m["sell_side"] + liq_1h["sell_side"]), reverse=True)[:6],
+    }
 
     # ── Alert ───────────────────────────────────────────────────
     direction_pts = long_pts if direction == "LONG" else short_pts
@@ -370,6 +401,8 @@ def generate_signal() -> dict:
         "partial_exit":       round(partial_exit, 2) if not np.isnan(partial_exit) else None,
         "be_level":           round(be_level, 2)     if not np.isnan(be_level)     else None,
         "rr":                 rr                     if not np.isnan(rr)           else None,
+        "atr_ltf":            round(atr_ltf, 2)      if not np.isnan(atr_ltf)      else None,
+        "liquidity":          liquidity,
         "factors":            factors,
         "session":            session,
         "final_score":        final_score,
@@ -386,7 +419,6 @@ def generate_signal() -> dict:
         "long_pts":           long_pts,
         "short_pts":          short_pts,
         "session_quality":    sq,
-        # ── New: Calendar + Regime ──────────────────────────────
         "blackout":           blackout.get("blackout", False),
         "blackout_reason":    blackout.get("reason", ""),
         "regime":             regime.get("regime", "transitioning"),

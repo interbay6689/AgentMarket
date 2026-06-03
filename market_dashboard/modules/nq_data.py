@@ -87,8 +87,9 @@ def load_nq_hourly_cache() -> pd.DataFrame:
     return combined
 
 
-def get_todays_nq_data() -> pd.DataFrame:
-    df = yf.download("NQ=F", period="1d", interval="5m", auto_adjust=True, progress=False)
+def _fetch_intraday(interval: str, period: str = "1d") -> pd.DataFrame:
+    """Base intraday fetcher — normalizes columns and converts to ET/IL timezones."""
+    df = yf.download("NQ=F", period=period, interval=interval, auto_adjust=True, progress=False)
     if df.empty:
         return pd.DataFrame()
     df = _normalize_columns(df)
@@ -101,6 +102,34 @@ def get_todays_nq_data() -> pd.DataFrame:
     df["datetime_et"] = df["datetime"].dt.tz_convert(ET_TZ)
     df["datetime_il"] = df["datetime"].dt.tz_convert(IL_TZ)
     return df[["datetime", "datetime_et", "datetime_il", "open", "high", "low", "close", "volume"]].dropna()
+
+
+def get_todays_nq_data() -> pd.DataFrame:
+    """5-minute NQ bars — entry / execution timeframe."""
+    return _fetch_intraday("5m", period="1d")
+
+
+def get_nq_1m() -> pd.DataFrame:
+    """1-minute NQ bars for today — finest scalping execution timeframe.
+    yfinance only provides 7 days of 1m data; we request today only."""
+    return _fetch_intraday("1m", period="1d")
+
+
+def get_nq_3m() -> pd.DataFrame:
+    """3-minute NQ bars — resampled from 1m (yfinance has no native 3m).
+    Used for scalp entry timing between 1m noise and 5m structure."""
+    df_1m = get_nq_1m()
+    if df_1m.empty:
+        return pd.DataFrame()
+    df_1m = df_1m.copy()
+    df_1m["datetime"] = pd.to_datetime(df_1m["datetime"])
+    df_1m = df_1m.set_index("datetime")
+    df_3m = df_1m[["open", "high", "low", "close", "volume"]].resample("3min").agg(
+        {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}
+    ).dropna().reset_index()
+    df_3m["datetime_et"] = df_3m["datetime"].dt.tz_convert(ET_TZ)
+    df_3m["datetime_il"] = df_3m["datetime"].dt.tz_convert(IL_TZ)
+    return df_3m[["datetime", "datetime_et", "datetime_il", "open", "high", "low", "close", "volume"]]
 
 
 def fetch_nq_15m(days_back: int = 5) -> pd.DataFrame:
