@@ -17,6 +17,12 @@ try:
 except ImportError:
     pass  # python-dotenv not installed — env vars must be set manually
 
+import os as _os
+_PLACEHOLDERS = {"PASTE_YOUR_NEW_KEY_HERE", "sk-ant-...", "", "your_key_here"}
+for _k in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY"):
+    if _os.environ.get(_k, "") in _PLACEHOLDERS:
+        _os.environ.pop(_k, None)
+
 import streamlit as st
 import os
 import csv

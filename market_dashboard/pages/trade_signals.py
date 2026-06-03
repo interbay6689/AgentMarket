@@ -743,19 +743,52 @@ def _do_agent_run() -> dict:
         return {"outcome": "error", "reason": str(e)}
 
 
+_KEY_PLACEHOLDERS = {"PASTE_YOUR_NEW_KEY_HERE", "sk-ant-...", "", "your_key_here"}
+
+
+def _api_key_ok() -> bool:
+    """True only if ANTHROPIC_API_KEY is set and not a placeholder."""
+    val = os.environ.get("ANTHROPIC_API_KEY", "")
+    return bool(val) and val not in _KEY_PLACEHOLDERS
+
+
+def _save_api_key(key: str) -> bool:
+    """Write the key to AgentMarket/.env and activate it in the current process."""
+    env_path = _ROOT / ".env"
+    try:
+        if env_path.exists():
+            lines = env_path.read_text(encoding="utf-8").splitlines()
+            new_lines, found = [], False
+            for line in lines:
+                if line.strip().startswith("ANTHROPIC_API_KEY"):
+                    new_lines.append(f"ANTHROPIC_API_KEY={key}")
+                    found = True
+                else:
+                    new_lines.append(line)
+            if not found:
+                new_lines.append(f"ANTHROPIC_API_KEY={key}")
+            env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+        else:
+            env_path.write_text(f"ANTHROPIC_API_KEY={key}\n", encoding="utf-8")
+        os.environ["ANTHROPIC_API_KEY"] = key
+        return True
+    except Exception:
+        return False
+
+
 def _render_agent_run_controls():
     """Status bar + Run button + persistent result, shown at top of cross-validation."""
     ind_state = _load_indicator_state()
     comp      = ind_state.get("composite_score", {})
     ind_score = comp.get("total", 0)
     threshold = comp.get("threshold", 65)
-    api_ok    = bool(os.environ.get("ANTHROPIC_API_KEY"))
+    api_ok    = _api_key_ok()
     computed  = ind_state.get("computed_at_ts", None)
 
     # Status bar
     score_color = "#00c853" if ind_score >= threshold else "#ffd600" if ind_score >= 45 else "#d50000"
     key_color   = "#00c853" if api_ok else "#d50000"
-    key_label   = "✅ API key set" if api_ok else "❌ ANTHROPIC_API_KEY not set"
+    key_label   = "✅ API key set" if api_ok else "❌ API key not set"
     ind_age     = f"indicators at {computed}" if computed else "indicators: not run yet"
 
     sc1, sc2, sc3 = st.columns([2, 2, 2])
@@ -775,18 +808,39 @@ def _render_agent_run_controls():
         unsafe_allow_html=True,
     )
 
+    # Inline key entry — shown once until the key is saved
+    if not api_ok:
+        with st.container():
+            st.markdown(
+                '<p style="font-size:.82em; color:#888; margin:4px 0 2px;">Enter your Anthropic API key once — it will be saved and loaded automatically on every future startup.</p>',
+                unsafe_allow_html=True,
+            )
+            k_col, btn_col2 = st.columns([4, 1])
+            entered = k_col.text_input(
+                "Anthropic API key",
+                type="password",
+                placeholder="sk-ant-api03-…",
+                label_visibility="collapsed",
+                key="input_api_key_inline",
+            )
+            if btn_col2.button("Save key", key="btn_save_key_inline", type="primary", use_container_width=True):
+                val = entered.strip()
+                if val.startswith("sk-ant-") and len(val) > 30:
+                    if _save_api_key(val):
+                        st.success("Key saved — reloading…")
+                        st.rerun()
+                    else:
+                        st.error("Could not write to .env — check file permissions.")
+                else:
+                    st.warning("Invalid key — must start with sk-ant- and be at least 30 characters.")
+        return  # don't render the run button until key is set
+
     # Run button
     btn_col, _ = st.columns([1, 3])
     with btn_col:
-        btn_label = "▶ Run Signal Agent" if api_ok else "▶ Run Signal Agent (no API key)"
-        btn_help  = (
-            "Runs indicators + signal agent (force=True — bypasses score threshold). "
-            "This calls the Claude API and costs tokens."
-            if api_ok
-            else "Set ANTHROPIC_API_KEY environment variable to enable AI analysis."
-        )
-        if st.button(btn_label, key="btn_cv_run", type="primary",
-                     use_container_width=True, help=btn_help, disabled=not api_ok):
+        if st.button("▶ Run Signal Agent", key="btn_cv_run", type="primary",
+                     use_container_width=True,
+                     help="Runs indicators + Signal Agent (Claude). Uses API tokens."):
             with st.spinner("Running indicators + Signal Agent (Claude)…"):
                 result = _do_agent_run()
             st.session_state["_agent_run_result"] = {
