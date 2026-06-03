@@ -8,6 +8,7 @@ Data flow:
 """
 from __future__ import annotations
 
+import csv
 import json
 import threading
 import uuid
@@ -97,6 +98,17 @@ def load_trade_log() -> pd.DataFrame:
                 "f_session", "f_stacked", "f_sentiment", "f_ml"):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
+    # pandas 2.x infers all-NaN columns as float64.
+    # Columns that must hold strings are explicitly cast to object here so that
+    # df.at / df.loc assignments never raise "Invalid value for dtype float64".
+    _STR_COLS = (
+        "id", "trade_type", "date", "time_il",
+        "direction", "htf_bias", "delta_dir", "ml_prediction",
+        "session_name", "outcome", "exit_time", "notes",
+    )
+    for col in _STR_COLS:
+        if col in df.columns:
+            df[col] = df[col].astype(object)
     return df
 
 
@@ -191,6 +203,31 @@ def _build_row(sig: dict, fpts: dict, trade_type: str = "real") -> dict:
     }
 
 
+def _apply_csv_updates(updates: dict) -> None:
+    """Update specific rows in trade_log.csv by 'id', using the csv stdlib.
+
+    `updates` maps trade_id → {column: new_value, ...}.
+    All values are written as strings — zero pandas dtype inference.
+    Must be called while holding _csv_lock.
+    """
+    path = str(TRADE_LOG_PATH)
+    with open(path, newline="", encoding="utf-8") as fh:
+        reader = csv.DictReader(fh)
+        fieldnames = list(reader.fieldnames or COLUMNS)
+        rows = list(reader)
+
+    for row in rows:
+        tid = row.get("id", "")
+        if tid in updates:
+            for col, val in updates[tid].items():
+                row[col] = "" if val is None else str(val)
+
+    with open(path, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+
+
 def log_paper_trade(sig: dict) -> bool:
     """
     Log a directional signal as a paper trade regardless of alert threshold.
@@ -243,19 +280,22 @@ def update_trade_manual(
         mask = df["id"] == trade_id
         if not mask.any():
             return False
-        idx = df[mask].index[0]
+        idx   = df[mask].index[0]
         entry = float(df.at[idx, "entry"]) if pd.notna(df.at[idx, "entry"]) else None
         stop  = float(df.at[idx, "stop"])  if pd.notna(df.at[idx, "stop"])  else None
 
-        df.at[idx, "outcome"]   = outcome
-        df.at[idx, "exit_time"] = datetime.now(IL_TZ).strftime("%Y-%m-%d %H:%M")
+        upd: dict = {
+            "outcome":   outcome,
+            "exit_time": datetime.now(IL_TZ).strftime("%Y-%m-%d %H:%M"),
+        }
         if notes:
-            df.at[idx, "notes"] = notes
+            upd["notes"] = notes
         if exit_price is not None:
-            df.at[idx, "exit_price"] = exit_price
+            upd["exit_price"] = exit_price
             if entry is not None and stop is not None and abs(entry - stop) > 0:
-                df.at[idx, "actual_rr"] = round(abs(exit_price - entry) / abs(entry - stop), 2)
-        df.to_csv(TRADE_LOG_PATH, index=False)
+                upd["actual_rr"] = round(abs(exit_price - entry) / abs(entry - stop), 2)
+
+        _apply_csv_updates({trade_id: upd})
         return True
 
 
@@ -266,6 +306,9 @@ def evaluate_open_trades(df_price: pd.DataFrame) -> int:
     Check OPEN trades against recent price bars.
     Updates outcome: WIN / LOSS / PARTIAL (hit 1R but still open).
     Returns number of trades resolved.
+
+    Updates are written via _apply_csv_updates (csv stdlib) to avoid
+    pandas 2.x dtype enforcement on all-NaN string columns.
     """
     if df_price.empty:
         return 0
@@ -277,10 +320,11 @@ def evaluate_open_trades(df_price: pd.DataFrame) -> int:
             return 0
 
         time_col = "datetime_il" if "datetime_il" in df_price.columns else "datetime"
-        updated_count = 0
+        updates: dict = {}  # trade_id → {col: value}
 
         for idx in df[open_mask].index:
-            row = df.loc[idx]
+            row       = df.loc[idx]
+            trade_id  = str(row.get("id", ""))
             direction = row.get("direction")
             entry     = float(row["entry"])        if pd.notna(row.get("entry"))        else None
             stop      = float(row["stop"])         if pd.notna(row.get("stop"))         else None
@@ -295,24 +339,24 @@ def evaluate_open_trades(df_price: pd.DataFrame) -> int:
             bars = df_price.copy()
             if pd.notna(entry_ts):
                 try:
-                    ets = pd.to_datetime(entry_ts, utc=True).tz_convert(None)
+                    ets    = pd.to_datetime(entry_ts, utc=True).tz_convert(None)
                     bar_ts = pd.to_datetime(bars[time_col], utc=True, errors="coerce").dt.tz_convert(None)
-                    bars = bars[bar_ts >= ets]
+                    bars   = bars[bar_ts >= ets]
                 except Exception:
                     pass
 
             if bars.empty:
                 continue
 
-            outcome    = None
-            exit_price = None
-            exit_time  = None
+            outcome     = None
+            exit_price  = None
+            exit_time   = None
             hit_partial = False
 
             for _, bar in bars.iterrows():
                 high = float(bar["high"])
                 low  = float(bar["low"])
-                bt   = str(bar.get(time_col, ""))
+                bt   = str(bar.get(time_col, "")).split("+")[0].split(".")[0]
 
                 if direction == "LONG":
                     if low <= stop:
@@ -340,15 +384,18 @@ def evaluate_open_trades(df_price: pd.DataFrame) -> int:
                 actual_rr = None
                 if exit_price and entry and stop and abs(entry - stop) > 0:
                     actual_rr = round(abs(exit_price - entry) / abs(entry - stop), 2)
-                df.at[idx, "outcome"]    = outcome
-                df.at[idx, "exit_price"] = exit_price
-                df.at[idx, "actual_rr"]  = actual_rr
-                df.at[idx, "exit_time"]  = exit_time
-                updated_count += 1
+                updates[trade_id] = {
+                    "outcome":    outcome,
+                    "exit_price": exit_price,
+                    "actual_rr":  actual_rr,
+                    "exit_time":  exit_time,
+                }
 
-        if updated_count:
-            df.to_csv(TRADE_LOG_PATH, index=False)
-        return updated_count
+        if not updates:
+            return 0
+
+        _apply_csv_updates(updates)
+        return len(updates)
 
 
 # ─── Analytics ────────────────────────────────────────────────────────────────
