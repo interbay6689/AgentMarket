@@ -276,6 +276,13 @@ def evaluate_open_trades(df_price: pd.DataFrame) -> int:
         if not open_mask.any():
             return 0
 
+        # pandas 2.x: columns loaded from an all-NaN CSV are inferred as float64.
+        # df.at assignment then raises TypeError when the value is a string.
+        # Cast string-typed columns to object before we write into them.
+        for _col in ("exit_time", "outcome", "notes"):
+            if _col in df.columns:
+                df[_col] = df[_col].astype(object)
+
         time_col = "datetime_il" if "datetime_il" in df_price.columns else "datetime"
         updated_count = 0
 
@@ -312,7 +319,7 @@ def evaluate_open_trades(df_price: pd.DataFrame) -> int:
             for _, bar in bars.iterrows():
                 high = float(bar["high"])
                 low  = float(bar["low"])
-                bt   = str(bar.get(time_col, ""))
+                bt   = str(bar.get(time_col, "")).split("+")[0].split(".")[0]
 
                 if direction == "LONG":
                     if low <= stop:
