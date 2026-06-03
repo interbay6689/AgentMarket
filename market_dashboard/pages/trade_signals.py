@@ -16,7 +16,7 @@ import plotly.graph_objects as go
 from datetime import datetime
 
 from modules.signal_engine import generate_signal
-from modules.nq_data import get_todays_nq_data, load_nq_daily_cache, current_session_israel
+from modules.nq_data import get_todays_nq_data, get_nq_1m, get_nq_3m, load_nq_daily_cache, current_session_israel
 from modules.nq_calculations import cumulative_delta, detect_fvg
 from modules.trade_tracker import log_trade, log_paper_trade, load_trade_settings, load_trade_log, summary_stats
 from modules.signal_validator import validate, load_validation_log, agreement_stats
@@ -86,6 +86,14 @@ def _get_validation(rule_sig: dict | None = None):
                 "note": str(e), "rule": {}, "agent": {}}
 
 
+@st.cache_data(ttl=30)
+def _get_1m():
+    return get_nq_1m()
+
+@st.cache_data(ttl=60)
+def _get_3m():
+    return get_nq_3m()
+
 @st.cache_data(ttl=60)
 def _get_5m():
     return get_todays_nq_data()
@@ -94,6 +102,10 @@ def _get_5m():
 @st.cache_data(ttl=300)
 def _get_daily():
     return load_nq_daily_cache()
+
+
+_TF_LOADERS = {"1m": _get_1m, "3m": _get_3m, "5m": _get_5m}
+_TF_TTL     = {"1m": "30s",   "3m": "60s",   "5m": "60s"}
 
 
 # ─── Color helpers ─────────────────────────────────────────────────────────────
@@ -403,7 +415,7 @@ def _render_rr_metrics(sig: dict):
 
 # ─── Section 4: NQ Chart ──────────────────────────────────────────────────────
 
-def _render_nq_chart(df_5m: pd.DataFrame, sig: dict):
+def _render_nq_chart(df_5m: pd.DataFrame, sig: dict, tf_label: str = "5m"):
     if df_5m.empty:
         st.warning("No 5-min NQ data available.")
         return
@@ -415,7 +427,7 @@ def _render_nq_chart(df_5m: pd.DataFrame, sig: dict):
     fig.add_trace(go.Candlestick(
         x=x, open=df_5m["open"], high=df_5m["high"],
         low=df_5m["low"], close=df_5m["close"],
-        name="NQ 5m",
+        name=f"NQ {tf_label}",
         increasing_line_color="#00c853", decreasing_line_color="#d50000",
         showlegend=False,
         hoverlabel=dict(bgcolor="#1a1a2e"),
@@ -494,6 +506,50 @@ def _render_nq_chart(df_5m: pd.DataFrame, sig: dict):
     except Exception:
         pass
 
+    # HTF Liquidity zones (EQH/EQL + swing highs/lows from 15m/1h)
+    liq = sig.get("liquidity", {})
+    for lvl in liq.get("eqh", []):
+        fig.add_hline(
+            y=lvl, line_color="#e040fb", line_dash="dot", line_width=1.0, opacity=0.7,
+            annotation_text=f"EQH  {lvl:,.0f}",
+            annotation_position="right",
+            annotation_font=dict(size=9, color="#e040fb"),
+        )
+    for lvl in liq.get("eql", []):
+        fig.add_hline(
+            y=lvl, line_color="#40c4ff", line_dash="dot", line_width=1.0, opacity=0.7,
+            annotation_text=f"EQL  {lvl:,.0f}",
+            annotation_position="right",
+            annotation_font=dict(size=9, color="#40c4ff"),
+        )
+    for lvl in liq.get("buy_side", [])[:3]:
+        fig.add_hline(
+            y=lvl, line_color="#b2ff59", line_dash="longdash", line_width=0.8, opacity=0.5,
+            annotation_text=f"BSL  {lvl:,.0f}",
+            annotation_position="right",
+            annotation_font=dict(size=8, color="#b2ff59"),
+        )
+    for lvl in liq.get("sell_side", [])[:3]:
+        fig.add_hline(
+            y=lvl, line_color="#ff6e40", line_dash="longdash", line_width=0.8, opacity=0.5,
+            annotation_text=f"SSL  {lvl:,.0f}",
+            annotation_position="right",
+            annotation_font=dict(size=8, color="#ff6e40"),
+        )
+
+    # ATR info caption
+    atr_ltf = sig.get("atr_ltf")
+    stop    = sig.get("stop")
+    entry_p = sig.get("entry")
+    if atr_ltf and stop and entry_p:
+        stop_pts = round(abs(entry_p - stop), 1)
+        fig.add_annotation(
+            text=f"LTF ATR: {atr_ltf} pts  |  Stop: {stop_pts} pts",
+            xref="paper", yref="paper", x=0.01, y=0.99,
+            showarrow=False, font=dict(size=9, color="#888"),
+            align="left",
+        )
+
     # Crosshair spikes — makes cursor feel like TradingView
     fig.update_xaxes(
         showspikes=True, spikemode="across", spikedash="dot",
@@ -507,7 +563,7 @@ def _render_nq_chart(df_5m: pd.DataFrame, sig: dict):
 
     fig.update_layout(
         height=500, template="plotly_dark",
-        margin=dict(l=0, r=110, t=16, b=0),
+        margin=dict(l=0, r=130, t=16, b=0),
         xaxis_rangeslider_visible=False,
         hovermode="x unified",
         dragmode="zoom",
@@ -1261,9 +1317,37 @@ def _live_signals_fragment():
     st.markdown("### Trade Parameters")
     _render_rr_metrics(sig)
 
-    st.markdown("### NQ 5-min Chart")
-    df_5m = _get_5m()
-    _render_nq_chart(df_5m, sig)
+    # Timeframe selector — scalping (1m/3m) or context (5m/15m)
+    tf_col, info_col = st.columns([2, 5])
+    with tf_col:
+        tf = st.radio(
+            "Chart TF",
+            ["1m", "3m", "5m"],
+            index=2,
+            horizontal=True,
+            help="1m/3m for scalp entry; 5m for structure confirmation",
+            key="chart_tf_radio",
+        )
+    atr_ltf = sig.get("atr_ltf")
+    with info_col:
+        if atr_ltf:
+            stop_p = sig.get("stop")
+            entry_p = sig.get("entry")
+            stop_pts = round(abs(entry_p - stop_p), 1) if stop_p and entry_p else "—"
+            st.markdown(
+                f'<div style="padding-top:8px; font-size:.85em; color:#aaa;">'
+                f'LTF ATR: <b style="color:#fff;">{atr_ltf} pts</b>'
+                f'&nbsp;·&nbsp; Scalp stop: <b style="color:#ff5252;">{stop_pts} pts</b>'
+                f'&nbsp;·&nbsp; '
+                f'<span style="color:#e040fb;">━━ EQH/EQL</span>'
+                f'&nbsp; <span style="color:#b2ff59;">─ ─ BSL</span>'
+                f'&nbsp; <span style="color:#ff6e40;">─ ─ SSL</span>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+    df_chart = _TF_LOADERS[tf]()
+    st.markdown(f"### NQ {tf} Chart")
+    _render_nq_chart(df_chart, sig, tf_label=tf)
 
     conf_col, macro_col = st.columns([3, 2])
     with conf_col:
