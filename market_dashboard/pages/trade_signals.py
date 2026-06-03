@@ -55,13 +55,19 @@ _DIRECTION_LEAD   = 15   # minimum lead over opponent
 
 # ─── Data loaders ─────────────────────────────────────────────────────────────
 
-def _load_agent_proposals(n: int = 3) -> list:
+def _load_agent_proposals(n: int = 3, directional_only: bool = False) -> list:
+    """Load last n agent proposals. directional_only=True skips NEUTRAL sentinels."""
     path = _LOGS / "agent_proposals.json"
     if not path.exists():
         return []
     try:
         data = json.loads(path.read_text())
-        return data[-n:] if isinstance(data, list) else []
+        if not isinstance(data, list):
+            return []
+        if directional_only:
+            data = [e for e in data
+                    if e.get("proposal", e).get("direction") in ("LONG", "SHORT")]
+        return data[-n:]
     except Exception:
         return []
 
@@ -402,7 +408,7 @@ def _render_nq_chart(df_5m: pd.DataFrame, sig: dict):
         st.warning("No 5-min NQ data available.")
         return
 
-    time_col  = "datetime_il" if "datetime_il" in df_5m.columns else "datetime"
+    time_col = "datetime_il" if "datetime_il" in df_5m.columns else "datetime"
     x = df_5m[time_col].astype(str)
 
     fig = go.Figure()
@@ -412,9 +418,10 @@ def _render_nq_chart(df_5m: pd.DataFrame, sig: dict):
         name="NQ 5m",
         increasing_line_color="#00c853", decreasing_line_color="#d50000",
         showlegend=False,
+        hoverlabel=dict(bgcolor="#1a1a2e"),
     ))
 
-    # Only the 3 most important structural levels — right side annotations only
+    # Key structural levels with price in the label
     levels = sig.get("levels", {})
     KEY_LEVELS = [
         ("pdh", "#ffd600", "PDH"),
@@ -425,12 +432,13 @@ def _render_nq_chart(df_5m: pd.DataFrame, sig: dict):
         val = levels.get(key)
         if val:
             fig.add_hline(
-                y=val, line_color=color, line_dash="dot", line_width=1.2, opacity=0.75,
-                annotation_text=label, annotation_position="right",
+                y=val, line_color=color, line_dash="dot", line_width=1.2, opacity=0.80,
+                annotation_text=f"{label}  {val:,.0f}",
+                annotation_position="right",
                 annotation_font=dict(size=10, color=color),
             )
 
-    # Entry / Stop / Target — only when signal active
+    # Entry / Stop / Target with price labels
     entry     = sig.get("entry")
     stop      = sig.get("stop")
     target    = sig.get("target")
@@ -440,50 +448,80 @@ def _render_nq_chart(df_5m: pd.DataFrame, sig: dict):
     if entry and direction != "NEUTRAL":
         fig.add_hline(
             y=entry, line_color=_dc(direction), line_width=2.5,
-            annotation_text="ENTRY", annotation_position="right",
+            annotation_text=f"ENTRY  {entry:,.0f}",
+            annotation_position="right",
             annotation_font=dict(size=11, color=_dc(direction)),
         )
     if stop:
         fig.add_hline(
             y=stop, line_color="#ff5252", line_width=1.5, line_dash="dash",
-            annotation_text="STOP", annotation_position="right",
+            annotation_text=f"STOP  {stop:,.0f}",
+            annotation_position="right",
             annotation_font=dict(size=10, color="#ff5252"),
         )
     if target:
         fig.add_hline(
             y=target, line_color="#69f0ae", line_width=1.5, line_dash="dash",
-            annotation_text="TARGET", annotation_position="right",
+            annotation_text=f"TARGET  {target:,.0f}",
+            annotation_position="right",
             annotation_font=dict(size=10, color="#69f0ae"),
         )
     if partial:
         fig.add_hline(
             y=partial, line_color="#ffd600", line_width=1, line_dash="dot",
-            annotation_text="1R", annotation_position="right",
+            annotation_text=f"1R  {partial:,.0f}",
+            annotation_position="right",
             annotation_font=dict(size=9, color="#ffd600"),
         )
 
-    # FVG zones — max 3 most recent, no text label
+    # FVG zones — max 3 most recent, labelled with price range
     try:
         fvgs = detect_fvg(df_5m)
         if not fvgs.empty:
             for _, fvg in fvgs.tail(3).iterrows():
                 is_bull = fvg["type"] == "bullish"
+                mid     = (fvg["top"] + fvg["bottom"]) / 2
+                color   = "#00c853" if is_bull else "#d50000"
+                fill    = "rgba(0,200,83,0.12)" if is_bull else "rgba(213,0,0,0.12)"
+                lbl     = ("Bull FVG" if is_bull else "Bear FVG")
                 fig.add_hrect(
                     y0=fvg["bottom"], y1=fvg["top"],
-                    fillcolor="rgba(0,200,83,0.10)" if is_bull else "rgba(213,0,0,0.10)",
-                    line_color="#00c853" if is_bull else "#d50000",
-                    line_width=0.5, opacity=0.8,
+                    fillcolor=fill, line_color=color, line_width=0.8, opacity=0.9,
+                    annotation_text=f"{lbl}  {fvg['bottom']:,.0f}–{fvg['top']:,.0f}",
+                    annotation_position="left",
+                    annotation_font=dict(size=9, color=color),
                 )
     except Exception:
         pass
 
-    fig.update_layout(
-        height=380, template="plotly_dark",
-        margin=dict(l=0, r=80, t=16, b=0),
-        xaxis_rangeslider_visible=False,
-        yaxis=dict(side="right", tickformat=",.0f"),
+    # Crosshair spikes — makes cursor feel like TradingView
+    fig.update_xaxes(
+        showspikes=True, spikemode="across", spikedash="dot",
+        spikecolor="#555", spikethickness=1,
     )
-    st.plotly_chart(fig, use_container_width=True)
+    fig.update_yaxes(
+        showspikes=True, spikemode="across", spikedash="dot",
+        spikecolor="#555", spikethickness=1,
+        side="right", tickformat=",.0f",
+    )
+
+    fig.update_layout(
+        height=500, template="plotly_dark",
+        margin=dict(l=0, r=110, t=16, b=0),
+        xaxis_rangeslider_visible=False,
+        hovermode="x unified",
+        dragmode="zoom",
+    )
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+        config={
+            "scrollZoom":      True,
+            "displayModeBar":  True,
+            "modeBarButtonsToAdd": ["drawline", "drawopenpath", "eraseshape"],
+            "modeBarButtonsToRemove": ["select2d", "lasso2d"],
+        },
+    )
 
 
 # ─── Section 5: Confluence factor rows ───────────────────────────────────────
@@ -728,6 +766,36 @@ def _render_regime_badge(sig: dict):
 
 # ─── Section 9: Cross-Validation ──────────────────────────────────────────────
 
+def _write_neutral_proposal(outcome: str, result: dict) -> None:
+    """Write a NEUTRAL sentinel so the validator knows the agent ran recently.
+
+    Without this, a 'no_signal' run leaves agent_proposals.json stale and the
+    Cross-Validation cards stay in PENDING state until a LONG/SHORT is generated.
+    """
+    import pytz as _pytz
+    IL_TZ = _pytz.timezone("Asia/Jerusalem")
+    path  = _LOGS / "agent_proposals.json"
+    entries: list = []
+    if path.exists():
+        try:
+            entries = json.loads(path.read_text())
+        except Exception:
+            pass
+    entries.append({
+        "logged_at": datetime.now(IL_TZ).isoformat(),
+        "proposal": {
+            "direction":   "NEUTRAL",
+            "confidence":  0,
+            "outcome":     outcome,
+            "reason":      result.get("reason") or result.get("final_text", "")[:200],
+            "session":     result.get("session", ""),
+            "key_factors": [],
+        },
+    })
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(entries[-200:], indent=2))
+
+
 def _do_agent_run() -> dict:
     """Run indicators then signal agent (force=True). Returns result dict."""
     try:
@@ -736,6 +804,10 @@ def _do_agent_run() -> dict:
         ind_state = _ind.run()
         result    = _sa.run(force=True)
         result["_indicator_score"] = ind_state.get("composite_score", {}).get("total", 0)
+        # If no LONG/SHORT proposal was written, log a NEUTRAL sentinel so the
+        # validator shows NEUTRAL (not PENDING) for the next 90 minutes.
+        if result.get("outcome") in ("no_signal", "skipped", "error"):
+            _write_neutral_proposal(result.get("outcome", "no_signal"), result)
         return result
     except ImportError as e:
         return {"outcome": "error", "reason": f"Import error: {e}"}
@@ -1076,8 +1148,8 @@ def _render_key_levels_table(sig: dict):
 # ─── Section 11: AI Agent proposals ───────────────────────────────────────────
 
 def _render_agent_proposals():
-    """Show the last 3 proposals written by the Signal Agent."""
-    proposals = _load_agent_proposals(3)
+    """Show the last 3 directional proposals written by the Signal Agent."""
+    proposals = _load_agent_proposals(3, directional_only=True)
     if not proposals:
         st.info(
             "Signal Agent has not generated proposals yet. "
@@ -1112,49 +1184,49 @@ def _render_agent_proposals():
                     st.caption(f"Session: {p['session']} | HTF: {p.get('htf_bias','?')}")
 
     if not proposals:
-        st.caption("Use ▶ Run Signal Agent in the Cross-Validation section above to generate a proposal.")
+        st.caption("No LONG/SHORT proposals yet — run Signal Agent to generate one.")
+
+    # Recent run activity (all outcomes, including no_signal)
+    recent_runs = _load_signal_agent_log(10)
+    if recent_runs:
+        with st.expander("📋 Recent Agent Activity (last 10 runs)", expanded=False):
+            for run in reversed(recent_runs):
+                outcome = run.get("outcome", "?")
+                ts      = str(run.get("started_at", ""))[:16].replace("T", " ")
+                score   = run.get("composite_score") or run.get("_indicator_score", "?")
+                tools   = run.get("tool_calls", 0)
+                icon    = {"proposal": "🟢", "no_signal": "⏳", "skipped": "⏭️", "error": "🔴"}.get(outcome, "⚪")
+                reason  = run.get("reason") or run.get("final_text", "")[:120]
+                st.markdown(
+                    f'<div style="padding:4px 0; border-bottom:1px solid #222; font-size:.85em;">'
+                    f'{icon} <b>{ts}</b> &nbsp; <code>{outcome}</code>'
+                    f'&nbsp; score:{score} &nbsp; tools:{tools}'
+                    + (f'<br><span style="color:#aaa;">{reason}</span>' if reason else "")
+                    + f'</div>',
+                    unsafe_allow_html=True,
+                )
 
 
 # ─── Main page ─────────────────────────────────────────────────────────────────
 
-def app():
-    st.title("🎯 Trade Signals — NQ")
-
-    # ── Auto-refresh + session header ────────────────────────────
-    col_ref, col_sess = st.columns([3, 1])
-    with col_ref:
-        refresh_sec = st.select_slider(
-            "Auto-refresh",
-            options=[0, 30, 60, 120, 300],
-            value=60,
-            format_func=lambda x: "Off" if x == 0 else f"{x}s",
-        )
-    if refresh_sec > 0:
-        try:
-            from streamlit_autorefresh import st_autorefresh
-            st_autorefresh(interval=refresh_sec * 1000, key="sig_refresh")
-        except ImportError:
-            st.caption("install streamlit-autorefresh for non-blocking refresh")
-
+@st.fragment(run_every=60)
+def _live_signals_fragment():
+    """All live data — auto-refreshes every 60 s without full-page flicker."""
     session = current_session_israel()
     sess_color = {"high": "#00c853", "medium": "#ffd600", "low": "#9e9e9e"}.get(
         session.get("risk", "low"), "#9e9e9e"
     )
-    with col_sess:
-        st.markdown(
-            f"""<div style="text-align:right; padding-top:6px;">
-                <span style="color:{sess_color}; font-weight:bold;">
-                    ⏱ {session.get('name','—')}</span><br>
-                <small style="color:#aaa;">{session.get('current_il_time','—')} IL</small>
-            </div>""",
-            unsafe_allow_html=True,
-        )
+    st.markdown(
+        f'<div style="text-align:right; color:{sess_color}; font-size:.9em; margin-bottom:4px;">'
+        f'<b>⏱ {session.get("name","—")}</b>'
+        f'&nbsp; <span style="color:#aaa;">{session.get("current_il_time","—")} IL</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
-    # ── Signal computation ────────────────────────────────────────
-    with st.spinner("Calculating signal..."):
-        sig = _get_signal()
+    sig = _get_signal()
 
-    # ── Auto-log alert ────────────────────────────────────────────
+    # Auto-log alert to journal
     if sig.get("alert"):
         ts_settings = load_trade_settings()
         if ts_settings.get("auto_log", True):
@@ -1164,7 +1236,7 @@ def app():
                     st.session_state["_last_logged"] = sig_hash
                     st.toast("📝 Trade logged to Journal", icon="✅")
 
-    # ── A/B experiment auto-record ────────────────────────────────
+    # A/B experiment auto-record
     try:
         from modules import ab_tracker as _ab
         if _ab.get_active_experiment() and sig.get("direction") != "NEUTRAL":
@@ -1175,45 +1247,33 @@ def app():
     except Exception:
         pass
 
-    # ── Blackout + Regime ─────────────────────────────────────────
     _render_blackout_banner(sig)
     _render_regime_badge(sig)
-
-    # ── Signal card + readiness ───────────────────────────────────
     _render_signal_card(sig)
     _render_signal_readiness(sig)
     _render_alert_banner(sig)
 
-    # ── Trade Parameters ──────────────────────────────────────────
     st.markdown("### Trade Parameters")
     _render_rr_metrics(sig)
 
-    # ── Chart (full width) ────────────────────────────────────────
     st.markdown("### NQ 5-min Chart")
     df_5m = _get_5m()
     _render_nq_chart(df_5m, sig)
 
-    # ── Confluence + Macro side-by-side below chart ───────────────
     conf_col, macro_col = st.columns([3, 2])
-
     with conf_col:
         st.markdown("### Confluence Factors")
         _render_confluence_visual(sig)
-
     with macro_col:
         st.markdown("### Macro Context")
         _render_macro_context(sig, session)
 
-    # ── Pre-Trade Checklist ───────────────────────────────────────
     long_pts  = sig.get("long_pts",  0) or 0
     short_pts = sig.get("short_pts", 0) or 0
     best      = max(long_pts, short_pts)
-    # Auto-expand checklist when close to firing (≥40 pts)
-    checklist_expanded = best >= 40 or sig.get("alert", False)
-    with st.expander("✅ Pre-Trade Checklist", expanded=checklist_expanded):
+    with st.expander("✅ Pre-Trade Checklist", expanded=best >= 40 or sig.get("alert", False)):
         _render_pretrade_checklist(sig, session)
 
-    # ── Cross-Validation ──────────────────────────────────────────
     st.markdown("### ⚖️ Signal Cross-Validation")
     val = _get_validation(sig)
     _render_cross_validation(val)
@@ -1221,15 +1281,12 @@ def app():
     with st.expander("📊 Validation History (last 100)", expanded=False):
         _render_validation_history()
 
-    # ── Zone Map ──────────────────────────────────────────────────
     with st.expander("🗺️ Zone Map (Support & Resistance)", expanded=True):
         _render_zone_map(sig)
 
-    # ── Key Levels ────────────────────────────────────────────────
     with st.expander("📊 Key Levels", expanded=False):
         _render_key_levels_table(sig)
 
-    # ── AI Agent Proposals ────────────────────────────────────────
     st.divider()
     st.markdown("### 🤖 AI Signal Agent")
     _render_agent_proposals()
@@ -1245,3 +1302,8 @@ def app():
                 st.line_chart(df_log.set_index("date")["final_score"], height=150)
         else:
             st.info("No score history yet.")
+
+
+def app():
+    st.title("🎯 Trade Signals — NQ")
+    _live_signals_fragment()
