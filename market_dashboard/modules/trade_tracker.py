@@ -32,6 +32,7 @@ IL_TZ = pytz.timezone("Asia/Jerusalem")
 
 COLUMNS = [
     "id", "timestamp", "date", "time_il",
+    "trade_type",                                          # "real" | "paper"
     "direction", "entry", "stop", "target", "partial_exit", "rr",
     "confidence", "long_pts", "short_pts",
     "htf_bias", "htf_strength", "nearest_zone_score",
@@ -149,36 +150,82 @@ def log_trade(sig: dict) -> bool:
                 return False
 
         fpts = _extract_factor_pts(sig.get("factors", []))
-        row = {
-            "id":                 str(uuid.uuid4())[:8],
-            "timestamp":          now_il.isoformat(),
-            "date":               now_il.strftime("%Y-%m-%d"),
-            "time_il":            now_il.strftime("%H:%M"),
-            "direction":          sig.get("direction"),
-            "entry":              sig.get("entry"),
-            "stop":               sig.get("stop"),
-            "target":             sig.get("target"),
-            "partial_exit":       sig.get("partial_exit"),
-            "rr":                 sig.get("rr"),
-            "confidence":         sig.get("confidence"),
-            "long_pts":           sig.get("long_pts"),
-            "short_pts":          sig.get("short_pts"),
-            "htf_bias":           sig.get("htf_bias"),
-            "htf_strength":       sig.get("htf_strength"),
-            "nearest_zone_score": sig.get("nearest_zone_score"),
-            "delta_dir":          sig.get("delta_dir"),
-            "session_name":       sig.get("session", {}).get("name", ""),
-            "session_quality":    sig.get("session_quality"),
-            "final_score":        sig.get("final_score"),
-            "ml_prediction":      sig.get("ml_prediction"),
-            **fpts,
-            "outcome":            "OPEN",
-            "exit_price":         None,
-            "actual_rr":          None,
-            "exit_time":          None,
-            "notes":              "",
-        }
+        row = _build_row(sig, fpts, trade_type="real")
+        updated = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+        updated.to_csv(TRADE_LOG_PATH, index=False)
+        return True
 
+
+def _build_row(sig: dict, fpts: dict, trade_type: str = "real") -> dict:
+    """Build a single CSV row dict from a signal dict."""
+    now_il = datetime.now(IL_TZ)
+    return {
+        "id":                 str(uuid.uuid4())[:8],
+        "timestamp":          now_il.isoformat(),
+        "date":               now_il.strftime("%Y-%m-%d"),
+        "time_il":            now_il.strftime("%H:%M"),
+        "trade_type":         trade_type,
+        "direction":          sig.get("direction"),
+        "entry":              sig.get("entry"),
+        "stop":               sig.get("stop"),
+        "target":             sig.get("target"),
+        "partial_exit":       sig.get("partial_exit"),
+        "rr":                 sig.get("rr"),
+        "confidence":         sig.get("confidence"),
+        "long_pts":           sig.get("long_pts"),
+        "short_pts":          sig.get("short_pts"),
+        "htf_bias":           sig.get("htf_bias"),
+        "htf_strength":       sig.get("htf_strength"),
+        "nearest_zone_score": sig.get("nearest_zone_score"),
+        "delta_dir":          sig.get("delta_dir"),
+        "session_name":       sig.get("session", {}).get("name", ""),
+        "session_quality":    sig.get("session_quality"),
+        "final_score":        sig.get("final_score"),
+        "ml_prediction":      sig.get("ml_prediction"),
+        **fpts,
+        "outcome":            "OPEN",
+        "exit_price":         None,
+        "actual_rr":          None,
+        "exit_time":          None,
+        "notes":              "",
+    }
+
+
+def log_paper_trade(sig: dict) -> bool:
+    """
+    Log a directional signal as a paper trade regardless of alert threshold.
+
+    Called every time the signal engine returns LONG or SHORT — even when
+    confidence, zone score, or R:R don't meet the alert criteria.  Paper
+    trades are evaluated automatically by evaluate_open_trades() just like
+    real trades, giving the ML model training data on quiet days.
+
+    Deduplication: one paper trade per direction per 30-minute window.
+    """
+    if sig.get("direction") not in ("LONG", "SHORT"):
+        return False
+    if sig.get("blackout"):
+        return False
+
+    settings = load_trade_settings()
+    dedup = settings.get("dedup_minutes", 30)
+
+    with _csv_lock:
+        _ensure_log()
+        df = load_trade_log()
+        now_il = datetime.now(IL_TZ)
+
+        if not df.empty and "timestamp" in df.columns:
+            cutoff = pd.Timestamp(now_il).tz_convert("UTC") - pd.Timedelta(minutes=dedup)
+            recent = df[
+                (df["timestamp"] >= cutoff) &
+                (df.get("trade_type", pd.Series(dtype=str)) == "paper")
+            ] if "trade_type" in df.columns else df[df["timestamp"] >= cutoff]
+            if not recent.empty and (recent["direction"] == sig.get("direction")).any():
+                return False
+
+        fpts = _extract_factor_pts(sig.get("factors", []))
+        row  = _build_row(sig, fpts, trade_type="paper")
         updated = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
         updated.to_csv(TRADE_LOG_PATH, index=False)
         return True

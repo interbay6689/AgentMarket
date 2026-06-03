@@ -35,47 +35,61 @@ def _dir_icon(d: str) -> str:
 def _tab_log():
     st.subheader("📋 Trade Log")
 
-    df = load_trade_log()
+    df_all = load_trade_log()
     settings = load_trade_settings()
 
-    # Evaluate open trades button
-    col_eval, col_info = st.columns([2, 5])
+    if "trade_type" not in df_all.columns:
+        df_all["trade_type"] = "real"
+
+    real_df  = df_all[df_all["trade_type"] == "real"]
+    paper_df = df_all[df_all["trade_type"] == "paper"]
+
+    # ── Stats strip ─────────────────────────────────────────────
+    col_eval, col_real, col_paper = st.columns([1, 2, 2])
     with col_eval:
-        if st.button("🔄 Evaluate Open Trades", type="primary"):
+        if st.button("🔄 Evaluate Open Trades", type="primary", use_container_width=True):
             df_price = get_todays_nq_data()
             n = evaluate_open_trades(df_price)
             if n:
                 st.success(f"Updated {n} trade(s).")
                 st.rerun()
             else:
-                st.info("No open trades resolved yet.")
-    with col_info:
-        stats = summary_stats(df)
-        c1, c2, c3, c4, c5 = st.columns(5)
-        c1.metric("Total",    stats["total"])
-        c2.metric("Wins ✅",  stats["wins"])
-        c3.metric("Losses ❌", stats["losses"])
-        c4.metric("Win %",    f"{stats['win_rate']}%")
-        c5.metric("Total R",  f"{stats['total_r']:+.1f}R")
+                st.info("No open trades resolved.")
 
-    if df.empty:
-        st.info("No trades logged yet. Trades are recorded automatically when a high-confidence alert fires.")
+    with col_real:
+        st.markdown("**🎯 Real Trades**")
+        rs = summary_stats(real_df)
+        rc1, rc2, rc3, rc4 = st.columns(4)
+        rc1.metric("Total",   rs["total"])
+        rc2.metric("Win %",   f"{rs['win_rate']}%")
+        rc3.metric("Total R", f"{rs['total_r']:+.1f}R")
+        rc4.metric("Open",    len(real_df[real_df["outcome"] == "OPEN"]))
+
+    with col_paper:
+        st.markdown("**📄 Paper Trades** *(ML training)*")
+        ps = summary_stats(paper_df)
+        pc1, pc2, pc3, pc4 = st.columns(4)
+        pc1.metric("Total",   ps["total"])
+        pc2.metric("Win %",   f"{ps['win_rate']}%")
+        pc3.metric("Total R", f"{ps['total_r']:+.1f}R")
+        pc4.metric("Open",    len(paper_df[paper_df["outcome"] == "OPEN"]))
+
+    if df_all.empty:
+        st.info("No trades yet — opens automatically when a directional signal fires.")
         return
 
-    # Filters
+    # ── Filters ──────────────────────────────────────────────────
     st.markdown("---")
-    f1, f2, f3 = st.columns(3)
-    outcome_filter = f1.multiselect(
-        "Outcome", ["OPEN", "WIN", "LOSS", "PARTIAL"],
-        default=["OPEN", "WIN", "LOSS", "PARTIAL"]
-    )
-    dir_filter = f2.multiselect(
-        "Direction", ["LONG", "SHORT"],
-        default=["LONG", "SHORT"]
-    )
-    date_range = f3.date_input("Date range", value=[], help="Leave empty for all dates")
+    f1, f2, f3, f4 = st.columns(4)
+    type_filter    = f1.multiselect("Type",    ["real", "paper"], default=["real", "paper"])
+    outcome_filter = f2.multiselect("Outcome", ["OPEN", "WIN", "LOSS", "PARTIAL"],
+                                    default=["OPEN", "WIN", "LOSS", "PARTIAL"])
+    dir_filter     = f3.multiselect("Direction", ["LONG", "SHORT"], default=["LONG", "SHORT"])
+    date_range     = f4.date_input("Date range", value=[], help="Leave empty for all dates")
 
+    df = df_all.copy()
     mask = (
+        df["trade_type"].isin(type_filter) &
         df["outcome"].isin(outcome_filter) &
         df["direction"].isin(dir_filter)
     )
@@ -86,18 +100,19 @@ def _tab_log():
     view = df[mask].sort_values("timestamp", ascending=False).copy()
 
     # Display columns
-    display_cols = ["id", "date", "time_il", "direction", "entry", "stop", "target",
-                    "rr", "confidence", "nearest_zone_score", "htf_bias",
+    display_cols = ["trade_type", "id", "date", "time_il", "direction", "entry", "stop",
+                    "target", "rr", "confidence", "nearest_zone_score", "htf_bias",
                     "session_name", "outcome", "actual_rr", "notes"]
     present = [c for c in display_cols if c in view.columns]
     view_show = view[present].copy()
-    view_show["direction"] = view_show["direction"].map(lambda d: _dir_icon(d))
-    view_show["outcome"]   = view_show["outcome"].map(lambda o: f"{_outcome_icon(o)} {o}")
+    view_show["trade_type"] = view_show["trade_type"].map(lambda t: "🎯 Real" if t == "real" else "📄 Paper")
+    view_show["direction"]  = view_show["direction"].map(lambda d: _dir_icon(d))
+    view_show["outcome"]    = view_show["outcome"].map(lambda o: f"{_outcome_icon(o)} {o}")
     st.dataframe(view_show, use_container_width=True, hide_index=True)
 
-    # ── Manual outcome entry ──────────────────────────────────
+    # ── Manual outcome entry (real trades only) ───────────────
     st.markdown("### ✏️ Update Trade Outcome")
-    open_trades = df[df["outcome"] == "OPEN"]
+    open_trades = df_all[(df_all["outcome"] == "OPEN") & (df_all.get("trade_type", "real") == "real")]
     if open_trades.empty:
         st.info("No open trades to update.")
         return
@@ -128,13 +143,24 @@ def _tab_log():
 
 def _tab_factors():
     st.subheader("📊 Factor Win Rate Analysis")
-    df = load_trade_log()
-    closed = df[df["outcome"].isin(["WIN", "LOSS", "PARTIAL"])]
+    df_all = load_trade_log()
+
+    # Use all trade types for factor analysis — paper trades provide ML training data
+    closed = df_all[df_all["outcome"].isin(["WIN", "LOSS", "PARTIAL"])]
+    paper_closed = closed[closed.get("trade_type", pd.Series(dtype=str)) == "paper"] if "trade_type" in closed.columns else pd.DataFrame()
+    real_closed  = closed[closed.get("trade_type", pd.Series(dtype=str)) == "real"]  if "trade_type" in closed.columns else closed
+
+    st.caption(
+        f"📊 {len(real_closed)} real completed trades · "
+        f"📄 {len(paper_closed)} paper completed trades · "
+        f"Total for analysis: **{len(closed)}**"
+    )
 
     if len(closed) < 3:
         st.info(f"Need at least 3 completed trades for analysis. Currently: {len(closed)}.")
-        st.caption("Keep trading and outcomes will appear here automatically.")
+        st.caption("Paper trades accumulate automatically when a directional signal fires — they will appear here once evaluated.")
         return
+    df = df_all
 
     wr = factor_win_rates(df)
     if wr.empty:

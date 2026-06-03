@@ -18,7 +18,7 @@ from datetime import datetime
 from modules.signal_engine import generate_signal
 from modules.nq_data import get_todays_nq_data, load_nq_daily_cache, current_session_israel
 from modules.nq_calculations import cumulative_delta, detect_fvg
-from modules.trade_tracker import log_trade, load_trade_settings, load_trade_log, summary_stats
+from modules.trade_tracker import log_trade, log_paper_trade, load_trade_settings, load_trade_log, summary_stats
 from modules.signal_validator import validate, load_validation_log, agreement_stats
 
 import json
@@ -1226,7 +1226,7 @@ def _live_signals_fragment():
 
     sig = _get_signal()
 
-    # Auto-log alert to journal
+    # Auto-log: real alert → trade_log with type="real"
     if sig.get("alert"):
         ts_settings = load_trade_settings()
         if ts_settings.get("auto_log", True):
@@ -1235,6 +1235,11 @@ def _live_signals_fragment():
                 if log_trade(sig):
                     st.session_state["_last_logged"] = sig_hash
                     st.toast("📝 Trade logged to Journal", icon="✅")
+
+    # Paper trade: any directional signal → log with type="paper" for ML training
+    # Runs even when alert=False so quiet days still accumulate training data.
+    elif sig.get("direction") not in (None, "NEUTRAL"):
+        log_paper_trade(sig)
 
     # A/B experiment auto-record
     try:
