@@ -85,21 +85,21 @@ def _price_badge(val: float, label: str, delta: float = None):
 
 
 def app():
-    st.title("📊 NQ Order Flow Dashboard — תכנון יום מסחר")
-    st.caption("נאסדק 100 חוזים עתידיים | שעון ישראל | Order Flow & ICT/SMC Analysis")
+    st.title("📊 NQ Order Flow Dashboard — Daily Trading Plan")
+    st.caption("Nasdaq 100 Futures | Israel Time | Order Flow & ICT/SMC Analysis")
 
     tabs = st.tabs([
-        "🎯 תוכנית המסחר",
-        "🕐 ציר הזמן",
-        "📏 רמות מפתח",
+        "🎯 War Plan",
+        "🕐 Timeline",
+        "📏 Key Levels",
         "🌊 Order Flow",
         "⚔️ ICT/SMC",
-        "📜 דפוסים היסטוריים",
-        "✅ צ'קליסט",
+        "📜 Historical",
+        "✅ Checklist",
     ])
 
     # ── data load ──────────────────────────────────────────────────────────────
-    with st.spinner("טוען נתוני NQ..."):
+    with st.spinner("Loading NQ data…"):
         df_5m = _get_5m()
         df_daily = _get_daily()
         df_hourly = _get_hourly()
@@ -128,23 +128,23 @@ def app():
     # TAB 1 — War Plan
     # ──────────────────────────────────────────────────────────────────────────
     with tabs[0]:
-        st.subheader("🎯 תוכנית המסחר היומית")
+        st.subheader("🎯 Daily War Plan")
         now_il = datetime.now(IL_TZ)
-        st.markdown(f"**שעון ישראל:** `{now_il.strftime('%H:%M:%S')}` | **תאריך:** `{now_il.strftime('%d/%m/%Y')}`")
+        st.markdown(f"**IL Time:** `{now_il.strftime('%H:%M:%S')}` | **Date:** `{now_il.strftime('%d/%m/%Y')}`")
 
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             if current_price:
-                _price_badge(current_price, "💰 מחיר NQ נוכחי", pct_change)
+                _price_badge(current_price, "💰 NQ Price", pct_change)
             else:
-                st.metric("💰 מחיר NQ", "לא זמין")
+                st.metric("💰 NQ Price", "N/A")
         with col2:
             risk_emoji = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(current_session.get("risk", "low"), "⚪")
-            st.metric("📍 סשן נוכחי", current_session.get("name", "—"))
-            st.caption(f"{risk_emoji} רמת פעילות: {current_session.get('risk', '—')}")
+            st.metric("📍 Current Session", current_session.get("name", "—"))
+            st.caption(f"{risk_emoji} Activity: {current_session.get('risk', '—')}")
         with col3:
             participants = PARTICIPANTS_BY_SESSION.get(current_session.get("name", ""), [])
-            st.metric("👥 משתתפים עיקריים", f"{len(participants)} סוגים")
+            st.metric("👥 Key Participants", f"{len(participants)} types")
             if participants:
                 st.caption(participants[0])
         with col4:
@@ -154,7 +154,7 @@ def app():
                 vix_color = "🔴" if vix_val > 20 else "🟡" if vix_val > 15 else "🟢"
                 st.metric(f"{vix_color} VIX", f"{vix_val:.2f}")
             else:
-                st.metric("VIX", "לא זמין")
+                st.metric("VIX", "N/A")
 
         # ── Sprint-1 row: ATR / OR / Premium-Discount / OB ──────────────────
         st.markdown("---")
@@ -165,18 +165,18 @@ def app():
                 color = "🔴" if consumed > 80 else "🟡" if consumed > 55 else "🟢"
                 st.metric(f"{color} ATR Range Consumed",
                           f"{consumed:.0f}%",
-                          delta=f"{atr_data['remaining_pts']:.0f} נקודות נותרו")
-                st.caption(f"ATR: {atr_data['atr']:.0f} | היום: {atr_data['today_range']:.0f}")
+                          delta=f"{atr_data['remaining_pts']:.0f} pts left")
+                st.caption(f"ATR: {atr_data['atr']:.0f} | Today: {atr_data['today_range']:.0f}")
             else:
-                st.metric("ATR Range", "לא זמין")
+                st.metric("ATR Range", "N/A")
         with s1c2:
             if opening_range:
-                or_status = "✅ הושלם" if opening_range.get("or_complete") else f"⏳ {opening_range.get('or_bars', 0)} נרות"
+                or_status = "✅ Complete" if opening_range.get("or_complete") else f"⏳ {opening_range.get('or_bars', 0)} bars"
                 st.metric("📐 Opening Range (15m)", or_status)
                 st.caption(f"H: {opening_range['or_high']:.0f} | L: {opening_range['or_low']:.0f} | Range: {opening_range['or_range']:.0f}")
             else:
-                st.metric("📐 Opening Range", "⏳ לפני Open")
-                st.caption("09:30–09:45 ET | 16:30–16:45 ישראל")
+                st.metric("📐 Opening Range", "⏳ Pre-Open")
+                st.caption("09:30–09:45 ET | 16:30–16:45 IL")
         with s1c3:
             bias_icons = {"bullish": "🟢 Discount", "neutral": "🟡 Equilibrium", "bearish": "🔴 Premium"}
             pd_label = bias_icons.get(pd_daily["bias"], "—")
@@ -187,10 +187,10 @@ def app():
             if not valid_obs.empty:
                 last_ob = valid_obs.iloc[-1]
                 ob_emoji = "🟢" if last_ob["type"] == "bullish" else "🔴"
-                st.metric(f"{ob_emoji} Order Block פעיל", f"{last_ob['low']:.0f}–{last_ob['high']:.0f}")
-                st.caption(f"{'Bullish' if last_ob['type'] == 'bullish' else 'Bearish'} OB | {len(valid_obs)} פעילים")
+                st.metric(f"{ob_emoji} Active Order Block", f"{last_ob['low']:.0f}–{last_ob['high']:.0f}")
+                st.caption(f"{'Bullish' if last_ob['type'] == 'bullish' else 'Bearish'} OB | {len(valid_obs)} active")
             else:
-                st.metric("Order Block", "לא זוהה")
+                st.metric("Order Block", "None detected")
 
         st.divider()
 
@@ -200,31 +200,31 @@ def app():
             fvg_df = nq_calculations.detect_fvg(df_5m)
             if not fvg_df.empty:
                 last_fvg = fvg_df.iloc[-1]
-                banners.append(f"🟦 **FVG {last_fvg['type'].upper()}** קיים ב-{last_fvg['bottom']:.0f}–{last_fvg['top']:.0f} — מגנט מחיר פוטנציאלי")
+                banners.append(f"🟦 **FVG {last_fvg['type'].upper()}** at {last_fvg['bottom']:.0f}–{last_fvg['top']:.0f} — potential price magnet")
             div_series = nq_calculations.detect_delta_divergence(df_5m)
             last_div = div_series.iloc[-4:].sum()
             if last_div > 0:
-                banners.append("⚠️ **Delta Divergence שורי** זוהה — מחיר עשוי לא לשקף לחץ מכירה")
+                banners.append("⚠️ **Bullish Delta Divergence** detected — price may not reflect buying pressure")
             elif last_div < 0:
-                banners.append("⚠️ **Delta Divergence דובי** זוהה — Distribution אפשרי")
+                banners.append("⚠️ **Bearish Delta Divergence** detected — possible distribution")
             stacks = nq_calculations.detect_stacked_imbalances(df_5m)
             if stacks:
                 last_stack = stacks[-1]
-                banners.append(f"📚 **Stacked Imbalance {last_stack['direction'].upper()}** — {last_stack['candle_count']} נרות רצופים | {last_stack['price_start']:.0f} → {last_stack['price_end']:.0f}")
+                banners.append(f"📚 **Stacked Imbalance {last_stack['direction'].upper()}** — {last_stack['candle_count']} consecutive candles | {last_stack['price_start']:.0f} → {last_stack['price_end']:.0f}")
 
             # Sprint-1 banners
             if opening_range and opening_range.get("or_complete") and current_price:
                 if current_price > opening_range["or_high"]:
-                    banners.append(f"📐 **OR Breakout BULLISH** — מחיר פרץ מעל Opening Range High ({opening_range['or_high']:.0f}) — bias שורי לסשן")
+                    banners.append(f"📐 **OR Breakout BULLISH** — price broke above OR High ({opening_range['or_high']:.0f}) — bullish session bias")
                 elif current_price < opening_range["or_low"]:
-                    banners.append(f"📐 **OR Breakdown BEARISH** — מחיר פרץ מתחת Opening Range Low ({opening_range['or_low']:.0f}) — bias דובי לסשן")
+                    banners.append(f"📐 **OR Breakdown BEARISH** — price broke below OR Low ({opening_range['or_low']:.0f}) — bearish session bias")
 
             if not ms_df.empty:
                 last_ms = ms_df.iloc[-1]
                 ms_emoji = "🚀" if "bullish" in last_ms["type"] else "📉"
                 ms_is_mss = "MSS" in last_ms["label"]
-                ms_text = "**MSS — היפוך מגמה!**" if ms_is_mss else "**BOS — המשך מגמה**"
-                banners.append(f"{ms_emoji} {ms_text} זוהה | {last_ms['label']} @ {last_ms['price']:.0f}")
+                ms_text = "**MSS — Trend Reversal!**" if ms_is_mss else "**BOS — Trend Continuation**"
+                banners.append(f"{ms_emoji} {ms_text} | {last_ms['label']} @ {last_ms['price']:.0f}")
 
             if not ob_df.empty and current_price:
                 valid_obs = ob_df[ob_df["valid"] == True]
@@ -232,22 +232,22 @@ def app():
                     dist = abs(current_price - (ob["high"] + ob["low"]) / 2)
                     if dist / current_price < 0.003:
                         ob_emoji = "🟢" if ob["type"] == "bullish" else "🔴"
-                        banners.append(f"{ob_emoji} **Order Block {ob['type'].upper()}** — מחיר קרוב מאוד ל-OB ב-{ob['low']:.0f}–{ob['high']:.0f} ({dist:.0f} נקודות)")
+                        banners.append(f"{ob_emoji} **{ob['type'].upper()} Order Block** — price within {dist:.0f} pts of OB at {ob['low']:.0f}–{ob['high']:.0f}")
 
             if atr_data and atr_data.get("consumed_pct", 0) > 85:
-                banners.append(f"⚠️ **ATR {atr_data['consumed_pct']:.0f}% נוצל** — range יומי כמעט מוצה, כניסות חדשות בעלות R:R ירוד")
+                banners.append(f"⚠️ **ATR {atr_data['consumed_pct']:.0f}% consumed** — daily range nearly exhausted, poor R:R for new entries")
 
         if current_session.get("name") == "Lunch Lull":
-            banners.insert(0, "⛔ **Lunch Lull פעיל** — נפח נמוך, false breakouts שכיחים, מומלץ להימנע ממסחר")
+            banners.insert(0, "⛔ **Lunch Lull active** — low liquidity, false breakouts common, avoid trading")
 
         if banners:
             for b in banners:
                 st.info(b)
         else:
-            st.success("✅ אין אותות מיוחדים כרגע — שוק רגיל")
+            st.success("✅ No special signals at this time — normal market conditions")
 
         st.divider()
-        st.subheader("📈 נכסים מתואמים")
+        st.subheader("📈 Correlated Assets")
         asset_cols = st.columns(4)
         asset_map = [("VIX", "^VIX"), ("DXY", "DX-Y.NYB"), ("TNX", "10Y Yield"), ("Gold", "GC=F")]
         for i, (name, _) in enumerate(asset_map):
@@ -262,11 +262,11 @@ def app():
                     else:
                         st.metric(name, "—")
                 else:
-                    st.metric(name, "לא זמין")
+                    st.metric(name, "N/A")
 
         if participants:
             st.divider()
-            st.subheader(f"👥 משתתפים בסשן: {current_session.get('name', '')}")
+            st.subheader(f"👥 Session Participants: {current_session.get('name', '')}")
             for p in participants:
                 st.markdown(f"• {p}")
 
@@ -274,7 +274,7 @@ def app():
     # TAB 2 — Session Timeline
     # ──────────────────────────────────────────────────────────────────────────
     with tabs[1]:
-        st.subheader("🕐 ציר זמן הסשנים — שעון ישראל")
+        st.subheader("🕐 Session Timeline — Israel Time")
 
         now_il = datetime.now(IL_TZ)
         now_minutes = now_il.hour * 60 + now_il.minute
@@ -301,14 +301,14 @@ def app():
                             line=dict(color="white" if is_active else "rgba(255,255,255,0.2)", width=2 if is_active else 0.5)),
                 text=f"{s['il_start']}–{s['il_end']} IL / {s['et_start']}–{s['et_end']} ET",
                 textposition="inside",
-                hovertemplate=f"<b>{s['name']}</b><br>{s['il_start']}–{s['il_end']} ישראל<br>{s['et_start']}–{s['et_end']} ET<br>{s['participants']}<extra></extra>",
+                hovertemplate=f"<b>{s['name']}</b><br>{s['il_start']}–{s['il_end']} IL<br>{s['et_start']}–{s['et_end']} ET<br>{s['participants']}<extra></extra>",
                 name=s["name"],
                 showlegend=False,
             ))
 
         # current time marker
         fig_tl.add_vline(x=now_minutes, line_dash="dash", line_color="red", line_width=2,
-                         annotation_text=f"⏰ {now_il.strftime('%H:%M')} ישראל",
+                         annotation_text=f"⏰ {now_il.strftime('%H:%M')} IL",
                          annotation_position="top")
 
         # key event markers
@@ -326,8 +326,8 @@ def app():
         tick_vals = list(range(0, 1441, 60))
         tick_text = [f"{v // 60:02d}:00" for v in tick_vals]
         fig_tl.update_layout(
-            title="ציר זמן סשנים — שעון ישראל (גרינוויץ +2/+3)",
-            xaxis=dict(title="שעה (ישראל)", range=[0, 1440],
+            title="Session Timeline — Israel Time (UTC +2/+3)",
+            xaxis=dict(title="Hour (IL)", range=[0, 1440],
                        tickvals=tick_vals, ticktext=tick_text),
             yaxis=dict(title=""),
             height=420,
@@ -339,10 +339,10 @@ def app():
         st.plotly_chart(fig_tl, use_container_width=True)
 
         st.divider()
-        st.subheader("👥 פירוט משתתפים לפי סשן")
+        st.subheader("👥 Participants by Session")
         for s in SESSIONS:
             parts = PARTICIPANTS_BY_SESSION.get(s["name"], [])
-            with st.expander(f"{s['name']} | {s['il_start']}–{s['il_end']} ישראל"):
+            with st.expander(f"{s['name']} | {s['il_start']}–{s['il_end']} IL"):
                 cols = st.columns(2)
                 with cols[0]:
                     for p in parts:
@@ -354,14 +354,14 @@ def app():
     # TAB 3 — Key Levels & Volume Profile
     # ──────────────────────────────────────────────────────────────────────────
     with tabs[2]:
-        st.subheader("📏 רמות מפתח ו-Volume Profile")
+        st.subheader("📏 Key Levels & Volume Profile")
 
         if df_5m.empty:
-            st.warning("נתוני 5 דקות לא זמינים — ייתכן ששוק סגור")
+            st.warning("5-minute data unavailable — market may be closed")
         else:
             fig_kl = make_subplots(rows=1, cols=2, column_widths=[0.75, 0.25],
                                    shared_yaxes=True,
-                                   subplot_titles=["NQ 5-דקות היום", "Volume Profile"])
+                                   subplot_titles=["NQ 5m — Today", "Volume Profile"])
 
             dt_col = "datetime_il" if "datetime_il" in df_5m.columns else "datetime"
             fig_kl.add_trace(go.Candlestick(
@@ -465,16 +465,16 @@ def app():
             st.plotly_chart(fig_kl, use_container_width=True)
 
         # levels table
-        st.subheader("📋 טבלת רמות")
+        st.subheader("📋 Levels Table")
         if current_price and levels:
             rows = []
             for key, (label, _) in level_colors.items():
                 val = levels.get(key)
                 if val and not np.isnan(val):
                     dist = val - current_price
-                    rows.append({"רמה": label, "מחיר": f"{val:.0f}",
-                                 "מרחק (נקודות)": f"{dist:+.0f}",
-                                 "סוג": "תמיכה 🟢" if dist < 0 else "התנגדות 🔴"})
+                    rows.append({"Level": label, "Price": f"{val:.0f}",
+                                 "Distance (pts)": f"{dist:+.0f}",
+                                 "Type": "Support 🟢" if dist < 0 else "Resistance 🔴"})
 
             # Add Opening Range levels
             if opening_range:
@@ -482,9 +482,9 @@ def app():
                     val = opening_range.get(or_key)
                     if val:
                         dist = val - current_price
-                        rows.append({"רמה": f"📐 {or_label}", "מחיר": f"{val:.0f}",
-                                     "מרחק (נקודות)": f"{dist:+.0f}",
-                                     "סוג": "תמיכה 🟢" if dist < 0 else "התנגדות 🔴"})
+                        rows.append({"Level": f"📐 {or_label}", "Price": f"{val:.0f}",
+                                     "Distance (pts)": f"{dist:+.0f}",
+                                     "Type": "Support 🟢" if dist < 0 else "Resistance 🔴"})
 
             # Add valid Order Blocks
             if not ob_df.empty:
@@ -493,12 +493,12 @@ def app():
                     mid = (ob["high"] + ob["low"]) / 2
                     dist = mid - current_price
                     emoji = "🟢" if ob["type"] == "bullish" else "🔴"
-                    rows.append({"רמה": f"{emoji} {ob['type'].capitalize()} OB", "מחיר": f"{ob['low']:.0f}–{ob['high']:.0f}",
-                                 "מרחק (נקודות)": f"{dist:+.0f}",
-                                 "סוג": "תמיכה 🟢" if ob["type"] == "bullish" else "התנגדות 🔴"})
+                    rows.append({"Level": f"{emoji} {ob['type'].capitalize()} OB", "Price": f"{ob['low']:.0f}–{ob['high']:.0f}",
+                                 "Distance (pts)": f"{dist:+.0f}",
+                                 "Type": "Support 🟢" if ob["type"] == "bullish" else "Resistance 🔴"})
 
             if rows:
-                df_lev = pd.DataFrame(rows).sort_values("מרחק (נקודות)")
+                df_lev = pd.DataFrame(rows).sort_values("Distance (pts)")
                 st.dataframe(df_lev, use_container_width=True, hide_index=True)
 
     # ──────────────────────────────────────────────────────────────────────────
@@ -508,7 +508,7 @@ def app():
         st.subheader("🌊 Order Flow Indicators")
 
         if df_5m.empty:
-            st.warning("נתוני 5 דקות לא זמינים")
+            st.warning("5-minute data unavailable")
         else:
             cd = nq_calculations.cumulative_delta(df_5m)
             div = nq_calculations.detect_delta_divergence(df_5m)
@@ -517,14 +517,14 @@ def app():
             bearish_div = int((div.iloc[-8:] > 0).sum())
             bullish_div = int((div.iloc[-8:] < 0).sum())
             if bearish_div > 0:
-                st.error(f"⚠️ Delta Divergence דובי זוהה ({bearish_div} איתות) — Distribution: מחיר עולה אך selling dominates")
+                st.error(f"⚠️ Bearish Delta Divergence detected ({bearish_div} signals) — Distribution: price rising but selling dominates")
             elif bullish_div > 0:
-                st.success(f"📈 Delta Divergence שורי זוהה ({bullish_div} איתות) — Accumulation: מחיר יורד אך buying dominates")
+                st.success(f"📈 Bullish Delta Divergence detected ({bullish_div} signals) — Accumulation: price falling but buying dominates")
 
             dt_col = "datetime_il" if "datetime_il" in df_5m.columns else "datetime"
             fig_cd = make_subplots(rows=2, cols=1, shared_xaxes=True,
                                    row_heights=[0.6, 0.4],
-                                   subplot_titles=["NQ מחיר", "Cumulative Delta"])
+                                   subplot_titles=["NQ Price", "Cumulative Delta"])
 
             fig_cd.add_trace(go.Candlestick(
                 x=df_5m[dt_col], open=df_5m["open"], high=df_5m["high"],
@@ -599,10 +599,10 @@ def app():
             # Stacked Imbalances
             stacks = nq_calculations.detect_stacked_imbalances(df_5m, min_stack=3)
             if stacks:
-                st.subheader("📚 Stacked Imbalances זוהו")
+                st.subheader("📚 Stacked Imbalances Detected")
                 for s in stacks[-5:]:
                     direction_emoji = "🟢" if s["direction"] == "bullish" else "🔴"
-                    st.markdown(f"{direction_emoji} **{s['direction'].upper()}** — {s['candle_count']} נרות | {s['price_start']:.0f} → {s['price_end']:.0f}")
+                    st.markdown(f"{direction_emoji} **{s['direction'].upper()}** — {s['candle_count']} candles | {s['price_start']:.0f} → {s['price_end']:.0f}")
 
             # Absorption table
             if not df_5m.empty and absorption.abs().sum() > 0:
@@ -612,10 +612,10 @@ def app():
                     if val != 0:
                         row = df_5m.iloc[i]
                         abs_rows.append({
-                            "זמן": str(row[dt_col]).split("+")[0],
-                            "כיוון": "🟢 Bullish" if val > 0 else "🔴 Bearish",
+                            "Time": str(row[dt_col]).split("+")[0],
+                            "Direction": "🟢 Bullish" if val > 0 else "🔴 Bearish",
                             "Volume": f"{int(row['volume']):,}",
-                            "מחיר": f"{row['close']:.0f}",
+                            "Price": f"{row['close']:.0f}",
                             "Range": f"{(row['high'] - row['low']):.1f}",
                         })
                 if abs_rows:
@@ -640,14 +640,14 @@ def app():
             return s_min <= now_et_hm < e_min
 
         kz_configs = [
-            ("🏙️ London KZ", "02:00", "05:00", "07:00–11:00 ישראל"),
-            ("🗽 NY AM KZ", "07:00", "10:00", "14:00–17:00 ישראל"),
-            ("🌆 NY PM KZ", "13:30", "16:00", "20:30–23:00 ישראל"),
+            ("🏙️ London KZ", "02:00", "05:00", "07:00–11:00 IL"),
+            ("🗽 NY AM KZ", "07:00", "10:00", "14:00–17:00 IL"),
+            ("🌆 NY PM KZ", "13:30", "16:00", "20:30–23:00 IL"),
         ]
         for col, (title, start_et, end_et, il_label) in zip([kz_col1, kz_col2, kz_col3], kz_configs):
             with col:
                 active = in_kz(start_et, end_et)
-                status = "🟢 פעיל עכשיו" if active else "⚫ לא פעיל"
+                status = "🟢 Active now" if active else "⚫ Not active"
                 st.metric(title, status)
                 st.caption(f"ET: {start_et}–{end_et} | {il_label}")
 
@@ -659,28 +659,28 @@ def app():
 
         def amd_phase():
             if now_et_hm < 7 * 60 + 30:
-                return "Accumulation", "💡 בניית פוזיציות בשקט — overnight לומד את הכיוון"
+                return "Accumulation", "💡 Silent position building — overnight discovering directional bias"
             elif now_et_hm < 10 * 60:
-                return "Manipulation", "⚡ חלון Judas Swing — תנועה מזויפת לפני הכיוון האמיתי"
+                return "Manipulation", "⚡ Judas Swing window — false move before true direction"
             else:
-                return "Distribution", "📤 חלוקה והוצאת הרווח — המוסדי מוכר/קונה לציבור"
+                return "Distribution", "📤 Distribution phase — institutions selling/buying to retail"
 
         current_phase, phase_desc = amd_phase()
         phase_colors = {"Accumulation": "🔵", "Manipulation": "🟡", "Distribution": "🔴"}
         with amd_col1:
             color = "🔵" if current_phase == "Accumulation" else "⚫"
-            st.metric("💡 Accumulation", color + " פעיל" if current_phase == "Accumulation" else color + " הסתיים")
+            st.metric("💡 Accumulation", color + " Active" if current_phase == "Accumulation" else color + " Complete")
             st.caption("Overnight + Pre-Market")
         with amd_col2:
             color = "🟡" if current_phase == "Manipulation" else "⚫"
-            st.metric("⚡ Manipulation", color + " פעיל" if current_phase == "Manipulation" else color + " הסתיים")
+            st.metric("⚡ Manipulation", color + " Active" if current_phase == "Manipulation" else color + " Complete")
             st.caption("09:15–09:45 ET (Judas Swing)")
         with amd_col3:
             color = "🔴" if current_phase == "Distribution" else "⚫"
-            st.metric("📤 Distribution", color + " פעיל" if current_phase == "Distribution" else color + " עדיין לא")
+            st.metric("📤 Distribution", color + " Active" if current_phase == "Distribution" else color + " Not yet")
             st.caption("RTH 10:00+ ET")
 
-        st.info(f"**שלב נוכחי: {current_phase}** — {phase_desc}")
+        st.info(f"**Current phase: {current_phase}** — {phase_desc}")
 
         # Judas Swing
         st.divider()
@@ -693,19 +693,19 @@ def app():
                 direction = judas.get("direction", "")
                 level = judas.get("level", 0)
                 if direction == "bearish":
-                    st.error(f"🚨 **Judas Swing דובי זוהה!** — מחיר פרץ מעל Overnight High ({overnight_high:.0f}), "
-                             f"הגיע ל-{judas.get('sweep_high', 0):.0f}, ואז הפך — כיוון אמיתי: ירידה")
+                    st.error(f"🚨 **Bearish Judas Swing detected!** — price swept above Overnight High ({overnight_high:.0f}), "
+                             f"reached {judas.get('sweep_high', 0):.0f}, then reversed — true direction: DOWN")
                 else:
-                    st.success(f"🚀 **Judas Swing שורי זוהה!** — מחיר פרץ מתחת Overnight Low ({overnight_low:.0f}), "
-                               f"הגיע ל-{judas.get('sweep_low', 0):.0f}, ואז הפך — כיוון אמיתי: עלייה")
+                    st.success(f"🚀 **Bullish Judas Swing detected!** — price swept below Overnight Low ({overnight_low:.0f}), "
+                               f"reached {judas.get('sweep_low', 0):.0f}, then reversed — true direction: UP")
             else:
-                st.info(f"📊 Overnight Range: {overnight_low:.0f} – {overnight_high:.0f} | Judas Swing לא זוהה עדיין")
+                st.info(f"📊 Overnight Range: {overnight_low:.0f} – {overnight_high:.0f} | No Judas Swing detected yet")
         else:
-            st.info("📊 Overnight High/Low לא זמין — בדוק לאחר שעה 09:30 ET (16:30 ישראל)")
+            st.info("📊 Overnight High/Low not available — check after 09:30 ET (16:30 IL)")
 
         # ── Opening Range ────────────────────────────────────────────────────
         st.divider()
-        st.markdown("### 📐 Opening Range (OR 15 דקות)")
+        st.markdown("### 📐 Opening Range (OR 15 min)")
         if opening_range:
             or_col1, or_col2, or_col3, or_col4 = st.columns(4)
             with or_col1:
@@ -713,31 +713,31 @@ def app():
             with or_col2:
                 st.metric("OR Low", f"{opening_range.get('or_low', 0):.0f}")
             with or_col3:
-                st.metric("OR Range (נקודות)", f"{opening_range.get('or_range', 0):.1f}")
+                st.metric("OR Range (pts)", f"{opening_range.get('or_range', 0):.1f}")
             with or_col4:
-                status = "✅ הושלם" if opening_range.get("or_complete") else f"⏳ {opening_range.get('or_bars', 0)}/3 נרות"
-                st.metric("סטטוס", status)
+                status = "✅ Complete" if opening_range.get("or_complete") else f"⏳ {opening_range.get('or_bars', 0)}/3 bars"
+                st.metric("Status", status)
 
             if current_price and opening_range.get("or_complete"):
                 if current_price > opening_range["or_high"]:
-                    st.success(f"🚀 **OR Breakout Bullish** — מחיר ({current_price:.0f}) מעל OR High ({opening_range['or_high']:.0f}). צפה לרציפות שורית, OR High הופך לתמיכה.")
+                    st.success(f"🚀 **OR Breakout Bullish** — price ({current_price:.0f}) above OR High ({opening_range['or_high']:.0f}). Expect bullish continuation, OR High becomes support.")
                 elif current_price < opening_range["or_low"]:
-                    st.error(f"📉 **OR Breakdown Bearish** — מחיר ({current_price:.0f}) מתחת OR Low ({opening_range['or_low']:.0f}). צפה לרציפות דובית, OR Low הופך להתנגדות.")
+                    st.error(f"📉 **OR Breakdown Bearish** — price ({current_price:.0f}) below OR Low ({opening_range['or_low']:.0f}). Expect bearish continuation, OR Low becomes resistance.")
                 else:
-                    st.info(f"📊 מחיר **בתוך** ה-Opening Range — אין bias ברור. המתן לפריצה ברורה.")
+                    st.info(f"📊 Price **inside** Opening Range — no clear bias. Wait for a decisive breakout.")
 
-            with st.expander("📖 כיצד להשתמש ב-Opening Range"):
+            with st.expander("📖 How to use the Opening Range"):
                 st.markdown("""
-**Opening Range (15 דקות) — 09:30–09:45 ET | 16:30–16:45 ישראל**
+**Opening Range (15 min) — 09:30–09:45 ET | 16:30–16:45 IL**
 
-- **OR High פריצה**: Bias שורי לאורך כל הסשן. OR High הופך לתמיכה בחזרה אליו.
-- **OR Low פריצה**: Bias דובי לאורך כל הסשן. OR Low הופך להתנגדות.
-- **מחיר בתוך ה-OR**: שוק מתחשב — המתן לכיוון.
-- **OR Mid**: אזור איזון. פריצה מעל/מתחת נותנת bias לחצי.
-- **סטטיסטיקה**: ~70% מהפעמים מחיר לא חוזר לתוך ה-OR לאחר פריצה ברורה.
+- **OR High breakout**: Bullish session bias. OR High becomes support on a retest.
+- **OR Low breakdown**: Bearish session bias. OR Low becomes resistance.
+- **Price inside OR**: Indecisive market — wait for direction.
+- **OR Mid**: Balance zone. Breaking above/below gives half-session bias.
+- **Statistics**: ~70% of the time price does not return inside the OR after a clean breakout.
                 """)
         else:
-            st.info("⏳ Opening Range יחושב לאחר 09:45 ET (16:45 ישראל)")
+            st.info("⏳ Opening Range will be calculated after 09:45 ET (16:45 IL)")
 
         # ── Order Blocks ──────────────────────────────────────────────────────
         st.divider()
@@ -748,30 +748,30 @@ def app():
 
             ob_display_cols = st.columns(2)
             with ob_display_cols[0]:
-                st.markdown(f"**✅ OBs פעילים: {len(valid_obs)}**")
+                st.markdown(f"**✅ Active OBs: {len(valid_obs)}**")
                 if not valid_obs.empty:
                     for _, ob in valid_obs.tail(5).iterrows():
                         emoji = "🟢" if ob["type"] == "bullish" else "🔴"
                         dist = abs(current_price - (ob["high"] + ob["low"]) / 2) if current_price else 0
-                        near = " 🎯 **קרוב!**" if dist < 20 else ""
-                        st.markdown(f"{emoji} **{ob['type'].upper()} OB** | {ob['low']:.0f}–{ob['high']:.0f} | מרחק: {dist:.0f} נקודות{near}")
+                        near = " 🎯 **Close!**" if dist < 20 else ""
+                        st.markdown(f"{emoji} **{ob['type'].upper()} OB** | {ob['low']:.0f}–{ob['high']:.0f} | dist: {dist:.0f} pts{near}")
             with ob_display_cols[1]:
-                st.markdown(f"**❌ OBs שבוטלו: {len(invalid_obs)}**")
-                st.caption("OB מבוטל כאשר מחיר סגר מחוץ לתחום ה-OB")
+                st.markdown(f"**❌ Invalidated OBs: {len(invalid_obs)}**")
+                st.caption("OB is invalidated when price closes beyond the OB zone")
 
-            with st.expander("📖 מהו Order Block?"):
+            with st.expander("📖 What is an Order Block?"):
                 st.markdown("""
-**Order Block** = הנר האחרון בכיוון ההפוך לפני תנועה מוסדית חזקה.
+**Order Block** = the last candle in the opposite direction before a strong institutional move.
 
-- **Bullish OB**: הנר הדובי האחרון לפני impulse שורי חזק → זו הייתה הקנייה המוסדית.
-  - כשמחיר חוזר לאזור זה — מוסד "מגן" על הפוזיציה → סביבת קנייה.
-- **Bearish OB**: הנר השורי האחרון לפני impulse דובי חזק → זו הייתה המכירה המוסדית.
-  - כשמחיר חוזר — סביבת מכירה.
+- **Bullish OB**: last bearish candle before a strong bullish impulse → that was institutional buying.
+  - When price returns to this zone — institution "defends" the position → buy environment.
+- **Bearish OB**: last bullish candle before a strong bearish impulse → that was institutional selling.
+  - When price returns — sell environment.
 
-**מה מבטל OB?** מחיר שסוגר מעבר לגבול ה-OB = המוסד "נעקף" = OB לא תקף.
+**What invalidates an OB?** Price closing beyond the OB boundary = institution was bypassed = OB no longer valid.
                 """)
         else:
-            st.info("Order Blocks לא זוהו בנתונים הנוכחיים")
+            st.info("No Order Blocks detected in current data")
 
         # ── BOS / MSS ─────────────────────────────────────────────────────────
         st.divider()
@@ -782,44 +782,39 @@ def app():
 
             if is_mss:
                 if "bullish" in last_ms["type"]:
-                    st.success(f"🚀 **MSS Bullish זוהה** @ {last_ms['price']:.0f} — **היפוך מגמה**: שוק עבר ממבנה דובי לשורי")
+                    st.success(f"🚀 **Bullish MSS detected** @ {last_ms['price']:.0f} — **Trend Reversal**: market shifted from bearish to bullish structure")
                 else:
-                    st.error(f"📉 **MSS Bearish זוהה** @ {last_ms['price']:.0f} — **היפוך מגמה**: שוק עבר ממבנה שורי לדובי")
+                    st.error(f"📉 **Bearish MSS detected** @ {last_ms['price']:.0f} — **Trend Reversal**: market shifted from bullish to bearish structure")
             else:
                 if "bullish" in last_ms["type"]:
-                    st.info(f"↑ **BOS Bullish** @ {last_ms['price']:.0f} — **המשך עלייה**: פריצת swing high קודם")
+                    st.info(f"↑ **Bullish BOS** @ {last_ms['price']:.0f} — **Continuation**: broke prior swing high")
                 else:
-                    st.info(f"↓ **BOS Bearish** @ {last_ms['price']:.0f} — **המשך ירידה**: שבירת swing low קודם")
+                    st.info(f"↓ **Bearish BOS** @ {last_ms['price']:.0f} — **Continuation**: broke prior swing low")
 
-            # Show last 5 events
-            st.markdown("**אירועי מבנה אחרונים:**")
-            display_ms = ms_df.tail(8).copy()
-            display_ms["סוג"] = display_ms["label"]
-            display_ms["מחיר"] = display_ms["price"].apply(lambda x: f"{x:.0f}")
-            display_ms["זמן"] = display_ms["datetime"].astype(str).str.split("+").str[0]
+            st.markdown("**Recent structure events:**")
             rows_ms = []
             for _, r in ms_df.tail(8).iterrows():
                 is_r_mss = "MSS" in r["label"]
                 rows_ms.append({
-                    "זמן": str(r["datetime"]).split("+")[0].split(".")[0],
-                    "אות": r["label"],
-                    "מחיר": f"{r['price']:.0f}",
-                    "חשיבות": "🔴 היפוך" if is_r_mss else "🟡 המשך",
+                    "Time": str(r["datetime"]).split("+")[0].split(".")[0],
+                    "Signal": r["label"],
+                    "Price": f"{r['price']:.0f}",
+                    "Importance": "🔴 Reversal" if is_r_mss else "🟡 Continuation",
                 })
             st.dataframe(pd.DataFrame(rows_ms), use_container_width=True, hide_index=True)
 
-            with st.expander("📖 BOS vs MSS — ההבדל"):
+            with st.expander("📖 BOS vs MSS — The Difference"):
                 st.markdown("""
 | | BOS (Break of Structure) | MSS (Market Structure Shift) |
 |--|--|--|
-| **משמעות** | שבירה **בכיוון** המגמה הקיימת | שבירה **נגד** המגמה הקיימת |
-| **אות** | המשך תנועה | היפוך פוטנציאלי |
-| **דוגמה** | בuptrend — מחיר שובר HH = BOS ↑ | בuptrend — מחיר שובר HL = MSS ↓ |
-| **כניסה** | continuation trade | reversal trade |
-| **אימות** | FVG / OB בכיוון | FVG / OB נגד המגמה הקודמת |
+| **Meaning** | Break **with** current trend | Break **against** current trend |
+| **Signal** | Trend continuation | Potential reversal |
+| **Example** | In uptrend — price breaks HH = BOS ↑ | In uptrend — price breaks HL = MSS ↓ |
+| **Entry** | Continuation trade | Reversal trade |
+| **Confirmation** | FVG / OB in direction | FVG / OB against prior trend |
                 """)
         else:
-            st.info("Market Structure events לא זוהו — נדרש יותר נתונים intraday")
+            st.info("No Market Structure events detected — need more intraday data")
 
         # ── Premium / Discount + ATR ──────────────────────────────────────────
         st.divider()
@@ -830,36 +825,36 @@ def app():
                            "Premium": "🔴", "Deep Premium": "🔴🔴"}
             zone_icon = zone_colors.get(pd_daily["zone"], "⚪")
             st.metric(f"{zone_icon} {pd_daily['zone']}", f"{pd_daily['pct']:.1f}%",
-                      delta="סביבת קנייה" if pd_daily["bias"] == "bullish" else
-                            "סביבת מכירה" if pd_daily["bias"] == "bearish" else "איזון")
-            st.caption("מיקום מחיר ביחס ל-weekly range (0%=low, 100%=high)")
+                      delta="Buy environment" if pd_daily["bias"] == "bullish" else
+                            "Sell environment" if pd_daily["bias"] == "bearish" else "Equilibrium")
+            st.caption("Price position within weekly range (0%=low, 100%=high)")
             if pd_daily["pct"] < 35:
-                st.success("📉→📈 מחיר ב-Discount — מוסד מעדיף לקנות באזור זה")
+                st.success("📉→📈 Price in Discount — institutions prefer to buy in this zone")
             elif pd_daily["pct"] > 65:
-                st.error("📈→📉 מחיר ב-Premium — מוסד מעדיף למכור באזור זה")
+                st.error("📈→📉 Price in Premium — institutions prefer to sell in this zone")
             else:
-                st.info("מחיר ב-Equilibrium — נמנע מכניסות, המתן להתרחקות מ-50%")
+                st.info("Price at Equilibrium — avoid entries, wait for extension from 50%")
         with atr_col:
             if atr_data:
                 consumed = atr_data["consumed_pct"]
-                st.metric("📏 ATR Consumed היום",
+                st.metric("📏 ATR Consumed Today",
                           f"{consumed:.0f}%",
-                          delta=f"נותרו ~{atr_data['remaining_pts']:.0f} נקודות")
+                          delta=f"~{atr_data['remaining_pts']:.0f} pts remaining")
                 st.progress(min(consumed / 100, 1.0))
-                st.caption(f"ATR({14}d): {atr_data['atr']:.0f} נקודות | Range היום: {atr_data['today_range']:.0f}")
+                st.caption(f"ATR(14d): {atr_data['atr']:.0f} pts | Today range: {atr_data['today_range']:.0f}")
                 if consumed > 80:
-                    st.error("⚠️ Range מוצה — R:R לכניסות חדשות ירוד מאוד")
+                    st.error("⚠️ Range exhausted — very poor R:R for new entries")
                 elif consumed > 60:
-                    st.warning("⚠️ Range מתקדם — בחר כניסות בזהירות")
+                    st.warning("⚠️ Range advanced — select entries carefully")
                 else:
-                    st.success("✅ Range פתוח — פוטנציאל תנועה טוב")
+                    st.success("✅ Range open — good movement potential")
             else:
-                st.metric("ATR Consumed", "לא זמין")
+                st.metric("ATR Consumed", "N/A")
 
         # ── ICT Macro Windows ─────────────────────────────────────────────────
         st.divider()
-        st.markdown("### ⏱️ ICT Macro Windows — חלונות זמן אלגוריתמיים")
-        st.caption("חלונות של ~20 דקות בהם אלגוריתמים מוסדיים מניפולציות מחיר לפני ה-displacement האמיתי")
+        st.markdown("### ⏱️ ICT Macro Windows — Algorithmic Time Windows")
+        st.caption("~20-minute windows where institutional algorithms manipulate price before the true displacement")
 
         try:
             macros = nq_calculations.detect_ict_macros(df_5m)
@@ -900,96 +895,96 @@ def app():
                         else:
                             cols[4].caption("⏰")
             else:
-                st.info("ICT Macro נתונים לא זמינים — נדרשים נתוני 5m עם datetime_et")
+                st.info("ICT Macro data unavailable — requires 5m data with datetime_et")
         except Exception as e:
             st.caption(f"ICT Macros: {e}")
 
-        with st.expander("📖 מדריך ICT Macros"):
+        with st.expander("📖 ICT Macros Guide"):
             st.markdown("""
-**ICT Macro Windows** הם חלונות זמן ספציפיים שבהם האלגוריתמים של ICT (Inner Circle Trader)
-פועלים ליצירת liquidity sweeps ולאחר מכן displacement אמיתי:
+**ICT Macro Windows** are specific time windows where ICT (Inner Circle Trader) algorithms
+create liquidity sweeps before the true displacement:
 
-| חלון | שעה ET | שעה ישראל | מאפיין |
-|------|---------|-----------|--------|
-| London Open Macro | 02:33–02:55 | 09:33–09:55 | Stop hunt על overnight range |
-| London Continuation | 04:03–04:20 | 11:03–11:20 | יציאה מ-London range |
-| Pre-Market Macro | 08:50–09:10 | 15:50–16:10 | הכנה ל-RTH — sweep של Pre-market H/L |
-| **NY AM Macro 1** | **09:50–10:10** | **16:50–17:10** | **החשוב ביותר — Stop hunt + reversal** |
-| **NY AM Macro 2** | **10:50–11:10** | **17:50–18:10** | **המשך Distribution/Accumulation** |
+| Window | ET Time | IL Time | Characteristic |
+|--------|---------|---------|----------------|
+| London Open Macro | 02:33–02:55 | 09:33–09:55 | Stop hunt on overnight range |
+| London Continuation | 04:03–04:20 | 11:03–11:20 | Departure from London range |
+| Pre-Market Macro | 08:50–09:10 | 15:50–16:10 | RTH prep — sweep of Pre-market H/L |
+| **NY AM Macro 1** | **09:50–10:10** | **16:50–17:10** | **Most important — Stop hunt + reversal** |
+| **NY AM Macro 2** | **10:50–11:10** | **17:50–18:10** | **Distribution/Accumulation continuation** |
 | Noon Macro | 11:50–12:10 | 18:50–19:10 | Midday reversal setup |
-| PM Macro 1 | 13:10–13:30 | 20:10–20:30 | תחילת PM session manipulation |
-| PM Macro 2 | 14:50–15:10 | 21:50–22:10 | הכנה ל-Power Hour |
+| PM Macro 1 | 13:10–13:30 | 20:10–20:30 | PM session manipulation start |
+| PM Macro 2 | 14:50–15:10 | 21:50–22:10 | Power Hour preparation |
 | PM Close Setup | 15:15–15:45 | 22:15–22:45 | MOC accumulation + stop hunt |
 
 **Patterns:**
-- 🔻 **Sweep High + Reversal** = Bearish Judas swing — מחיר פרץ מעל high, ואז ירד → כניסה שורט
-- 🔺 **Sweep Low + Reversal** = Bullish Judas swing — מחיר פרץ מתחת low, ואז עלה → כניסה לונג
-- 🚀 **Displacement** = תנועה חדה ברורה בכיוון — continuation trade
+- 🔻 **Sweep High + Reversal** = Bearish Judas swing — price broke above high, then reversed → short entry
+- 🔺 **Sweep Low + Reversal** = Bullish Judas swing — price broke below low, then reversed → long entry
+- 🚀 **Displacement** = sharp clear move in one direction — continuation trade
             """)
 
         # ICT Concepts Reference
         st.divider()
-        st.markdown("### 📖 מדריך ICT/SMC מהיר")
-        with st.expander("הצג מדריך מושגים"):
+        st.markdown("### 📖 ICT/SMC Quick Reference")
+        with st.expander("Show concept glossary"):
             st.markdown("""
-| מושג | הגדרה | אות מסחר |
-|------|--------|-----------|
-| **Order Block (OB)** | הנר האחרון בכיוון ההפוך לפני impulse מוסדי | קנייה/מכירה בחזרה לblock |
-| **BOS (Break of Structure)** | שבירת swing בכיוון המגמה הקיימת | המשך תנועה |
-| **MSS (Market Structure Shift)** | שבירת swing נגד המגמה הקיימת | היפוך פוטנציאלי |
-| **Opening Range (OR)** | High/Low של 15 דקות ראשונות | פריצה = bias לסשן |
-| **Premium/Discount** | מיקום מחיר ב-range: >65%=מכור, <35%=קנה | כניסה בצד הנכון |
-| **ATR Consumed** | כמה % מה-range היומי כבר "נאכל" | >80% = הימנע מכניסות |
-| **FVG (Fair Value Gap)** | פער בין high נר N-2 לlow נר N | מחיר חוזר למלא את הפער |
-| **Judas Swing** | פריצת overnight range + היפוך תוך 30 דקות | כניסה בכיוון ההיפוך |
-| **Killzone** | חלון זמן של פעילות מוסדית גבוהה | סטאפים בתוך ה-killzone |
-| **AMD** | Accumulation → Manipulation → Distribution | זיהוי שלב + כניסה בהתאם |
-| **Stacked Imbalance** | 3+ נרות חד-כיווניים ברצף | כיוון מוסדי חזק |
-| **Absorption** | volume גדול + range צר + close בקצה | מוסדי בולע ומחזיק כיוון |
+| Concept | Definition | Trade Signal |
+|---------|-----------|-------------|
+| **Order Block (OB)** | Last candle in opposite direction before institutional impulse | Buy/sell on return to block |
+| **BOS (Break of Structure)** | Swing break in the direction of existing trend | Continuation move |
+| **MSS (Market Structure Shift)** | Swing break against existing trend | Potential reversal |
+| **Opening Range (OR)** | First 15-min High/Low | Breakout = session bias |
+| **Premium/Discount** | Price position in range: >65%=sell, <35%=buy | Enter on correct side |
+| **ATR Consumed** | % of daily range already consumed | >80% = avoid entries |
+| **FVG (Fair Value Gap)** | Gap between candle N-2 high and candle N low | Price returns to fill the gap |
+| **Judas Swing** | Overnight range breakout + reversal within 30 min | Enter in reversal direction |
+| **Killzone** | Time window of high institutional activity | Only expect setups inside KZ |
+| **AMD** | Accumulation → Manipulation → Distribution | Identify phase + trade accordingly |
+| **Stacked Imbalance** | 3+ consecutive one-directional candles | Strong institutional direction |
+| **Absorption** | High volume + narrow range + close at extreme | Institution absorbing, holding direction |
             """)
 
     # ──────────────────────────────────────────────────────────────────────────
     # TAB 6 — Historical Patterns
     # ──────────────────────────────────────────────────────────────────────────
     with tabs[5]:
-        st.subheader("📜 דפוסים היסטוריים")
+        st.subheader("📜 Historical Patterns")
 
         if df_daily.empty:
-            st.warning("נתוני daily לא זמינים")
+            st.warning("Daily data unavailable")
         else:
             col_sim, col_wr = st.columns(2)
 
             with col_sim:
-                st.markdown("### 🔍 ימים דומים להיום")
+                st.markdown("### 🔍 Similar Days to Today")
                 similar = nq_calculations.find_similar_setups(df_daily)
                 if not similar.empty:
                     similar["similarity"] = (similar["similarity"] * 100).round(1)
                     similar["next_day_change"] = similar["next_day_change"].round(2)
-                    similar["תוצאה"] = similar["next_day_change"].apply(
+                    similar["Result"] = similar["next_day_change"].apply(
                         lambda x: f"🟢 +{x:.1f}%" if x > 0 else f"🔴 {x:.1f}%")
-                    display_sim = similar[["date", "similarity", "תוצאה"]].copy()
-                    display_sim.columns = ["תאריך", "דמיון %", "תוצאת יום הבא"]
+                    display_sim = similar[["date", "similarity", "Result"]].copy()
+                    display_sim.columns = ["Date", "Similarity %", "Next Day Result"]
                     st.dataframe(display_sim, use_container_width=True, hide_index=True)
 
                     up_days = (similar["next_day_change"] > 0).sum()
                     total = len(similar)
                     win_pct = up_days / total * 100
                     if win_pct >= 60:
-                        st.success(f"📈 מתוך {total} ימים דומים: {up_days} ירדו לאחר מכן ({win_pct:.0f}% bias שורי)")
+                        st.success(f"📈 {up_days}/{total} similar days went up next day ({win_pct:.0f}% bullish bias)")
                     elif win_pct <= 40:
-                        st.error(f"📉 מתוך {total} ימים דומים: {total - up_days} ירדו ({100 - win_pct:.0f}% bias דובי)")
+                        st.error(f"📉 {total - up_days}/{total} similar days fell next day ({100 - win_pct:.0f}% bearish bias)")
                     else:
-                        st.info(f"📊 מתוך {total} ימים דומים: {win_pct:.0f}% עלו — bias ניטרלי")
+                        st.info(f"📊 {win_pct:.0f}% of similar days went up — neutral bias")
                 else:
-                    st.info("אין מספיק היסטוריה לניתוח דמיון")
+                    st.info("Not enough history for similarity analysis")
 
             with col_wr:
-                st.markdown("### ⏰ Win Rate לפי שעה (ET)")
+                st.markdown("### ⏰ Win Rate by Hour (ET)")
                 if not df_hourly.empty:
                     wr_df = nq_calculations.session_win_rates(df_hourly)
                     if not wr_df.empty:
                         fig_wr = px.bar(wr_df, x="hour_et", y="win_rate_pct",
-                                        title="% ימים שNQ עלה בשעה זו (ET)",
+                                        title="% of days NQ closed up in this ET hour",
                                         color="win_rate_pct",
                                         color_continuous_scale=["red", "yellow", "green"],
                                         range_color=[30, 70])
@@ -999,10 +994,10 @@ def app():
                                              coloraxis_showscale=False, height=350)
                         st.plotly_chart(fig_wr, use_container_width=True)
                 else:
-                    st.info("נתוני שעתיים לא זמינים")
+                    st.info("Hourly data unavailable")
 
             # Historical stats table
-            st.markdown("### 📊 סטטיסטיקות לפי סשן (Daily)")
+            st.markdown("### 📊 Session Reference Table")
             if len(df_daily) >= 5:
                 stats_rows = []
                 for sess in SESSIONS:
@@ -1010,10 +1005,10 @@ def app():
                     if name in ("Overnight", "Lunch Lull", "Cash Close"):
                         continue
                     stats_rows.append({
-                        "סשן": name,
-                        "שעות ישראל": f"{sess['il_start']}–{sess['il_end']}",
-                        "שעות ET": f"{sess['et_start']}–{sess['et_end']}",
-                        "משתתפים": sess["participants"][:50] + "..." if len(sess["participants"]) > 50 else sess["participants"],
+                        "Session": name,
+                        "IL Hours": f"{sess['il_start']}–{sess['il_end']}",
+                        "ET Hours": f"{sess['et_start']}–{sess['et_end']}",
+                        "Participants": sess["participants"][:50] + "..." if len(sess["participants"]) > 50 else sess["participants"],
                     })
                 st.dataframe(pd.DataFrame(stats_rows), use_container_width=True, hide_index=True)
 
@@ -1021,7 +1016,7 @@ def app():
     # TAB 7 — Checklist
     # ──────────────────────────────────────────────────────────────────────────
     with tabs[6]:
-        st.subheader("✅ צ'קליסט לפני כניסה לעסקה")
+        st.subheader("✅ Pre-Trade Checklist")
 
         # compute conditions automatically
         conditions = {}
@@ -1104,51 +1099,55 @@ def app():
         conditions["atr_ok"] = atr_ok
 
         checklist = [
-            ("good_session",  "הסשן הנוכחי מתאים למסחר (לא Lunch Lull / Overnight)"),
-            ("near_level",    "המחיר קרוב לרמת מפתח (PDH/PDL/POC/FVG ±0.25%)"),
-            ("no_divergence", "אין Delta Divergence ב-4 נרות אחרונים"),
-            ("not_judas",     "לא בחלון Judas Swing (09:15–09:30 ET)"),
-            ("has_stack",     "יש Stacked Imbalance בכיוון האפשרי"),
-            ("has_fvg",       "יש Fair Value Gap פעיל"),
-            ("vol_ok",        "Volume לפחות 80% מהממוצע"),
-            ("near_ob",       "מחיר קרוב ל-Order Block פעיל (±0.3%)"),
-            ("has_ms",        "יש אות BOS / MSS ברור בנתוני היום"),
-            ("or_breakout",   "Opening Range פרץ בכיוון ברור (מחוץ ל-OR)"),
-            ("atr_ok",        "ATR Range לא מוצה — נותרו יותר מ-20% מהrange היומי"),
+            ("good_session",  "Current session is suitable for trading (not Lunch Lull / Overnight)"),
+            ("near_level",    "Price is near a key level (PDH/PDL/POC/FVG ±0.25%)"),
+            ("no_divergence", "No Delta Divergence in last 4 bars"),
+            ("not_judas",     "Not in Judas Swing window (09:15–09:30 ET)"),
+            ("has_stack",     "Stacked Imbalance present in potential direction"),
+            ("has_fvg",       "Active Fair Value Gap exists"),
+            ("vol_ok",        "Volume is at least 80% of session average"),
+            ("near_ob",       "Price is near an active Order Block (±0.3%)"),
+            ("has_ms",        "Clear BOS / MSS signal in today's data"),
+            ("or_breakout",   "Opening Range has broken in a clear direction"),
+            ("atr_ok",        "ATR range not exhausted — more than 20% of daily range remaining"),
         ]
 
         score = sum(1 for key, _ in checklist if conditions.get(key, False))
         total = len(checklist)
         score_pct = score / total * 100
 
-        st.metric("ציון צ'קליסט", f"{score}/{total}")
-        st.progress(score / total)
-
-        if score_pct >= 70:
-            st.success(f"✅ {score}/{total} תנאים מתקיימים ({score_pct:.0f}%) — **תנאים טובים לסחרות**")
-        elif score_pct >= 45:
-            st.warning(f"⚠️ {score}/{total} תנאים מתקיימים ({score_pct:.0f}%) — **אזהרה: לא כל התנאים קיימים**")
-        else:
-            st.error(f"❌ {score}/{total} תנאים מתקיימים ({score_pct:.0f}%) — **לא מומלץ לסחור עכשיו**")
-
-        st.divider()
-        st.markdown("### פירוט תנאים")
-        for key, label in checklist:
-            passed = conditions.get(key, False)
-            icon = "✅" if passed else "❌"
-            st.markdown(f"{icon} {label}")
+        col_score, col_session = st.columns([1, 2])
+        with col_score:
+            st.metric("Checklist Score", f"{score}/{total}")
+            st.progress(score / total)
+        with col_session:
+            if score_pct >= 70:
+                st.success(f"✅ {score}/{total} conditions met ({score_pct:.0f}%) — **Good conditions for a trade**")
+            elif score_pct >= 45:
+                st.warning(f"⚠️ {score}/{total} conditions met ({score_pct:.0f}%) — **Caution: not all conditions present**")
+            else:
+                st.error(f"❌ {score}/{total} conditions met ({score_pct:.0f}%) — **Not recommended to trade now**")
 
         st.divider()
-        st.markdown("### 📝 הערות ידניות")
-        note = st.text_area("הכנס הערות לתכנון המסחר היום:", height=100,
-                             placeholder="לדוגמה: אין נתונים כלכליים היום, VIX נמוך, trend שורי מאתמול...")
+        st.markdown("### Condition Details")
+        # Show failed conditions first
+        failed = [(k, l) for k, l in checklist if not conditions.get(k, False)]
+        passed_list = [(k, l) for k, l in checklist if conditions.get(k, False)]
+        for key, label in failed + passed_list:
+            p = conditions.get(key, False)
+            st.markdown(f"{'✅' if p else '❌'} {label}")
+
+        st.divider()
+        st.markdown("### 📝 Manual Notes")
+        st.text_area("Enter trade plan notes for today:", height=100,
+                     placeholder="e.g., No economic data today, VIX low, bullish trend from yesterday…")
 
         st.markdown("#### 📋 ICT Pre-Trade Framework")
         st.markdown("""
-1. **מה הbias היומי?** (Daily Chart — Higher High/Low?)
-2. **מה הsession bias?** (Asian range: above/below?)
-3. **מה ה-PD Array הכי קרובה?** (FVG? OB? Breaker?)
-4. **מה הliquidity pool הכי קרובה?** (Stops מעל high / מתחת low?)
-5. **מתי ה-killzone?** (מצפה לאות בתוך הchallzone בלבד)
-6. **האם יש confirmation?** (MSS? BOS? Delta?)
+1. **What is the daily bias?** (Daily Chart — Higher High/Low?)
+2. **What is the session bias?** (Asian range: above/below?)
+3. **What is the nearest PD Array?** (FVG? OB? Breaker?)
+4. **What is the nearest liquidity pool?** (Stops above high / below low?)
+5. **When is the killzone?** (Only expect signals inside the killzone)
+6. **Is there confirmation?** (MSS? BOS? Delta?)
         """)

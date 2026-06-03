@@ -83,11 +83,37 @@ def _status_chip(status: str) -> str:
 def _tab_agent_status() -> None:
     st.subheader("Agent Status")
 
-    # ── Orchestrator controls ──────────────────────────────────────────────────
     orch_status = orchestrator.get_status()
     is_running  = orch_status.get("_scheduler_running", False)
     has_apsched = orch_status.get("_apscheduler_available", False)
+    status_data = _load_agent_status()
+    for key in status_data:
+        if key in orch_status and isinstance(orch_status[key], dict):
+            status_data[key] = {**status_data.get(key, {}), **orch_status[key]}
 
+    # ── System health strip ────────────────────────────────────────────────────
+    all_last_runs = [s.get("last_run") for s in status_data.values() if s.get("last_run")]
+    last_run_ago = "—"
+    if all_last_runs:
+        try:
+            latest = max(all_last_runs)
+            lt = datetime.fromisoformat(latest)
+            now_il = datetime.now(IL_TZ)
+            if lt.tzinfo is None:
+                lt = IL_TZ.localize(lt)
+            delta_min = int((now_il - lt).total_seconds() / 60)
+            last_run_ago = f"{delta_min}m ago" if delta_min < 120 else f"{delta_min // 60}h ago"
+        except Exception:
+            last_run_ago = all_last_runs[0][:16]
+    total_runs = sum(s.get("runs", 0) for s in status_data.values())
+
+    h1, h2, h3 = st.columns(3)
+    h1.metric("Scheduler", "🟢 Running" if is_running else "⚪ Idle")
+    h2.metric("Last Activity", last_run_ago)
+    h3.metric("Total Runs", total_runs)
+    st.divider()
+
+    # ── Orchestrator controls ──────────────────────────────────────────────────
     with st.container(border=True):
         c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
         c1.markdown("**🧠 Orchestrator Scheduler**")
@@ -120,32 +146,38 @@ def _tab_agent_status() -> None:
     with st.container(border=True):
         st.caption("Manual Agent Triggers")
         b1, b2 = st.columns(2)
-        if b1.button("🔍 Run Analysis Agent", key="btn_analysis",
-                     help="Evaluate open trades + write insights"):
-            with st.spinner("Running Analysis Agent (claude-sonnet-4-6)…"):
-                result = orchestrator.run_once("analysis")
-            ins = result.get("insights_written", 0)
-            ev  = result.get("trades_evaluated", 0)
-            if result.get("outcome") == "error":
-                st.error(f"Error: {result.get('error','?')}")
-            else:
-                st.success(f"Done — {ev} trade(s) evaluated, {ins} insight(s) written")
-            st.rerun()
+        _ana_last = status_data.get("analysis_agent", {}).get("last_run")
+        _opt_last = status_data.get("config_optimizer", {}).get("last_run")
+        with b1:
+            if st.button("🔍 Run Analysis Agent", key="btn_analysis",
+                         help="Evaluate open trades + write insights"):
+                with st.spinner("Running Analysis Agent (claude-sonnet-4-6)…"):
+                    result = orchestrator.run_once("analysis")
+                ins = result.get("insights_written", 0)
+                ev  = result.get("trades_evaluated", 0)
+                if result.get("outcome") == "error":
+                    st.error(f"Error: {result.get('error','?')}")
+                else:
+                    st.success(f"Done — {ev} trade(s) evaluated, {ins} insight(s) written")
+                st.rerun()
+            st.caption(f"Last run: {_ana_last[:16] if _ana_last else '—'}")
 
-        if b2.button("⚙️ Run Config Optimizer", key="btn_optimizer",
-                     help="Daily parameter review (uses adaptive thinking)"):
-            with st.spinner("Running Config Optimizer (claude-sonnet-4-6 + thinking)…"):
-                result = orchestrator.run_once("optimizer")
-            ch = result.get("changes_applied", 0)
-            if result.get("outcome") == "error":
-                st.error(f"Error: {result.get('error','?')}")
-            elif result.get("outcome") == "skipped":
-                st.warning(f"Skipped — {result.get('reason','?')}")
-            else:
-                st.success(f"Done — {ch} change(s) applied")
-                if result.get("summary"):
-                    st.info(result["summary"][:400])
-            st.rerun()
+        with b2:
+            if st.button("⚙️ Run Config Optimizer", key="btn_optimizer",
+                         help="Daily parameter review (uses adaptive thinking)"):
+                with st.spinner("Running Config Optimizer (claude-sonnet-4-6 + thinking)…"):
+                    result = orchestrator.run_once("optimizer")
+                ch = result.get("changes_applied", 0)
+                if result.get("outcome") == "error":
+                    st.error(f"Error: {result.get('error','?')}")
+                elif result.get("outcome") == "skipped":
+                    st.warning(f"Skipped — {result.get('reason','?')}")
+                else:
+                    st.success(f"Done — {ch} change(s) applied")
+                    if result.get("summary"):
+                        st.info(result["summary"][:400])
+                st.rerun()
+            st.caption(f"Last run: {_opt_last[:16] if _opt_last else '—'}")
 
     st.divider()
 
@@ -158,12 +190,6 @@ def _tab_agent_status() -> None:
         "config_optimizer":("⚙️ Config Optimizer", "claude-sonnet-4-6 + thinking — daily param tuning"),
     }
 
-    status_data = _load_agent_status()
-    # Merge live scheduler data
-    for key in agent_info:
-        if key in orch_status and isinstance(orch_status[key], dict):
-            status_data[key] = {**status_data.get(key, {}), **orch_status[key]}
-
     cols = st.columns([2, 3, 1, 1, 2])
     cols[0].markdown("**Agent**")
     cols[1].markdown("**Role**")
@@ -173,7 +199,7 @@ def _tab_agent_status() -> None:
     st.divider()
 
     for agent_key, (display_name, role) in agent_info.items():
-        s = status_data.get(agent_key, {})
+        s    = status_data.get(agent_key, {})
         c0, c1, c2, c3, c4 = st.columns([2, 3, 1, 1, 2])
         c0.markdown(f"**{display_name}**")
         c1.caption(role)
@@ -310,6 +336,20 @@ def _tab_insights() -> None:
     if not insights:
         st.info("Insights log is empty.")
         return
+
+    # Summary strip
+    total   = len(insights)
+    wins    = sum(1 for i in insights if i.get("outcome") == "WIN")
+    losses  = sum(1 for i in insights if i.get("outcome") == "LOSS")
+    confs   = [i.get("confidence") for i in insights if i.get("confidence") is not None]
+    avg_conf = sum(confs) / len(confs) if confs else 0.0
+    win_rate = wins / total * 100 if total else 0.0
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total Insights", total)
+    m2.metric("WIN", wins, delta=f"{win_rate:.0f}% win rate")
+    m3.metric("LOSS", losses)
+    m4.metric("Avg Confidence", f"{avg_conf:.1f}/10")
+    st.divider()
 
     for ins in reversed(insights[-20:]):
         ts = str(ins.get("logged_at", ins.get("timestamp", "")))[:16]

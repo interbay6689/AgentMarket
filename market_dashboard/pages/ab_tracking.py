@@ -39,7 +39,7 @@ def _oe(outcome: str) -> str:
 
 def _metrics_row(m: dict, prefix: str = "") -> None:
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric(f"{prefix}סה״כ",      m.get("total", 0))
+    c1.metric(f"{prefix}Total",      m.get("total", 0))
     c2.metric(f"{prefix}Win Rate",   f"{m.get('win_rate', 0):.1f}%")
     c3.metric(f"{prefix}Accuracy",   f"{m.get('accuracy', 0):.1f}%")
     c4.metric(f"{prefix}Avg P&L",    f"{m.get('avg_pnl', 0):+.1f} pts")
@@ -50,23 +50,23 @@ def _metrics_row(m: dict, prefix: str = "") -> None:
 
 def _tab_active(active: dict):
     st.subheader(f"🔬 {active['name']}")
-    st.caption(f"פתוח מ: {active.get('created_at','')[:10]}  ·  {active.get('description','')}")
+    st.caption(f"Open since: {active.get('created_at','')[:10]}  ·  {active.get('description','')}")
 
     # Auto-resolve pending outcomes from today's 5m data
     df_5m = _get_5m()
     n_res = ab_tracker.resolve_pending_outcomes(df_5m)
     if n_res > 0:
-        st.toast(f"📊 {n_res} תוצאות נפתרו אוטומטית", icon="✅")
+        st.toast(f"📊 {n_res} outcomes resolved automatically", icon="✅")
 
     m = ab_tracker.get_experiment_metrics(active["exp_id"], days=14)
     _metrics_row(m)
-    st.caption("חלון: 14 ימים אחרונים")
+    st.caption("Window: last 14 days")
 
     signals = active.get("signals", [])
     if not signals:
         st.info(
-            "אין אותות מוקלטים עדיין. "
-            "עבור לעמוד **🎯 Signals** — האות ייוצר ויירשם אוטומטית."
+            "No signals recorded yet. "
+            "Go to **🎯 Signals** — the next signal will be created and logged automatically."
         )
         return
 
@@ -114,18 +114,18 @@ def _tab_active(active: dict):
         st.plotly_chart(fig_pnl, use_container_width=True)
 
     # Signal table (most recent first)
-    st.markdown("**אותות אחרונים**")
+    st.markdown("**Recent Signals**")
     rows = []
     for s in reversed(signals[-30:]):
         oc = s.get("outcome", "PENDING")
         rows.append({
-            "תאריך":      s.get("date", ""),
-            "שעה (IL)":  s.get("time_il", ""),
-            "כיוון":      s.get("direction", ""),
+            "Date":       s.get("date", ""),
+            "Time (IL)":  s.get("time_il", ""),
+            "Direction":  s.get("direction", ""),
             "Confidence": f"{s.get('confidence', 0):.0f}%",
             "Session":    s.get("session", ""),
             "Regime":     s.get("regime", ""),
-            "תוצאה":      f"{_oe(oc)} {oc}",
+            "Outcome":    f"{_oe(oc)} {oc}",
             "P&L (pts)":  f"{s.get('pnl_points', 0):+.1f}" if oc != "PENDING" else "—",
         })
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
@@ -136,15 +136,15 @@ def _tab_active(active: dict):
 def _tab_history():
     exps = ab_tracker.list_experiments(30)
     if not exps:
-        st.info("אין ניסויים עדיין.")
+        st.info("No experiments yet.")
         return
 
     for exp in exps:
-        tag = "🟢 פעיל" if exp.get("active") else "⚫"
+        tag = "🟢 Active" if exp.get("active") else "⚫"
         m   = ab_tracker.get_experiment_metrics(exp["exp_id"])
         with st.expander(
             f"{tag}  {exp['name']}  —  {exp.get('created_at','')[:10]}  "
-            f"({m.get('total', 0)} אותות · Win {m.get('win_rate', 0):.0f}%)",
+            f"({m.get('total', 0)} signals · Win {m.get('win_rate', 0):.0f}%)",
             expanded=bool(exp.get("active")),
         ):
             _metrics_row(m)
@@ -157,7 +157,7 @@ def _tab_history():
 def _tab_compare():
     exps = ab_tracker.list_experiments(30)
     if len(exps) < 2:
-        st.info("צריך לפחות 2 ניסויים להשוואה.")
+        st.info("Need at least 2 experiments to compare.")
         return
 
     names = [f"{e['name']}  ({e.get('created_at','')[:10]})" for e in exps]
@@ -165,24 +165,24 @@ def _tab_compare():
     col1, col2 = st.columns(2)
     with col1:
         idx_a = st.selectbox(
-            "ניסוי A — בסיס / לפני",
+            "Experiment A — Baseline / Before",
             range(len(names)),
             index=min(1, len(names) - 1),
             format_func=lambda i: names[i],
         )
     with col2:
         idx_b = st.selectbox(
-            "ניסוי B — חדש / אחרי",
+            "Experiment B — New / After",
             range(len(names)),
             index=0,
             format_func=lambda i: names[i],
         )
 
     if idx_a == idx_b:
-        st.warning("בחר שני ניסויים שונים.")
+        st.warning("Select two different experiments.")
         return
 
-    days = st.slider("חלון (ימים)", 7, 60, 14)
+    days = st.slider("Window (days)", 7, 60, 14)
     comp = ab_tracker.compare_experiments(
         exps[idx_a]["exp_id"], exps[idx_b]["exp_id"], days
     )
@@ -221,7 +221,7 @@ def _tab_compare():
         d = delta.get(k, 0)
         arrow = "⬆️" if d > 0 else "⬇️" if d < 0 else "➡️"
         rows.append({
-            "מדד":     label,
+            "Metric":  label,
             "A":       m_a.get(k, 0),
             "B":       m_b.get(k, 0),
             "Δ (B−A)": f"{arrow} {d:+.1f}",
@@ -240,7 +240,7 @@ def _tab_compare():
     fig.add_hline(y=0, line_color="#555")
     fig.update_layout(
         height=280, template="plotly_dark",
-        title="Δ = B − A  (ירוק = שיפור)",
+        title="Δ = B − A  (green = improvement)",
         margin=dict(l=0, r=0, t=40, b=0),
         yaxis_title="Delta",
     )
@@ -250,27 +250,27 @@ def _tab_compare():
 # ─── Tab: New experiment ───────────────────────────────────────────────────────
 
 def _tab_new():
-    st.markdown("#### יצירת ניסוי חדש")
+    st.markdown("#### Create New Experiment")
     st.caption(
-        "כל שינוי משמעותי (פרמטרים, אסטרטגיה, הפעלת/כיבוי פיצ'ר) ראוי לניסוי נפרד. "
-        "הניסוי הקודם נסגר אוטומטית ומשמר לצורך השוואה."
+        "Every significant change (parameters, strategy, enabling/disabling a feature) deserves a separate experiment. "
+        "The previous experiment closes automatically and is preserved for comparison."
     )
 
     with st.form("new_exp_form", clear_on_submit=True):
         name = st.text_input(
-            "שם הניסוי *",
-            placeholder="למשל: הפעלת Claude category scorer",
+            "Experiment name *",
+            placeholder="e.g.: Enable Claude category scorer",
         )
         desc = st.text_area(
-            "מה שינית?",
-            placeholder="תאר את השינוי ומטרתו — יעזור לפרשנות התוצאות בעתיד",
+            "What did you change?",
+            placeholder="Describe the change and its purpose — will help interpret results later",
         )
-        include_cfg = st.checkbox("שמור snapshot של config.yaml", value=True)
-        submitted = st.form_submit_button("➕ התחל ניסוי חדש", type="primary")
+        include_cfg = st.checkbox("Save config snapshot", value=True)
+        submitted = st.form_submit_button("➕ Start New Experiment", type="primary")
 
         if submitted:
             if not name.strip():
-                st.error("שם הניסוי חובה.")
+                st.error("Experiment name is required.")
                 return
             cfg_snap: dict = {}
             if include_cfg:
@@ -280,10 +280,10 @@ def _tab_new():
                 except Exception:
                     pass
             exp_id = ab_tracker.create_experiment(name.strip(), desc.strip(), cfg_snap)
-            st.success(f"✅ ניסוי חדש נוצר: `{exp_id}`")
+            st.success(f"✅ New experiment created: `{exp_id}`")
             st.info(
-                "עבור לעמוד **🎯 Signals** — האות הבא שייווצר ייוצג אוטומטית. "
-                "חזור לטאב **📊 ניסוי פעיל** לראות את ההתקדמות."
+                "Go to **🎯 Signals** — the next signal will be recorded automatically. "
+                "Return to the **📊 Active** tab to see progress."
             )
 
 
@@ -292,8 +292,8 @@ def _tab_new():
 def app():
     st.title("🧪 A/B Performance Tracking")
     st.caption(
-        "מעקב אוטומטי אחר דיוק האותות לפני ואחרי שינויים בתצורה — "
-        "תוצאות מחושבות מנתוני NQ 5m (WIN ≥ 0.12% תוך שעה)"
+        "Automatic tracking of signal accuracy before and after config changes — "
+        "outcomes computed from NQ 5m data (WIN ≥ 0.12% within 1 hour)"
     )
 
     active = ab_tracker.get_active_experiment()
@@ -301,24 +301,24 @@ def app():
         st.markdown(
             f"""<div style="background:#1a2e4a; border-radius:6px;
                             padding:8px 14px; margin-bottom:8px;">
-                🟢 ניסוי פעיל: <b>{active['name']}</b>
+                🟢 Active experiment: <b>{active['name']}</b>
                 &nbsp;·&nbsp;
                 <span style="color:#aaa; font-size:.9em;">
-                    מ-{active.get('created_at','')[:10]}
+                    since {active.get('created_at','')[:10]}
                 </span>
             </div>""",
             unsafe_allow_html=True,
         )
 
     t_active, t_history, t_compare, t_new = st.tabs(
-        ["📊 ניסוי פעיל", "📜 היסטוריה", "⚖️ השוואה", "➕ ניסוי חדש"]
+        ["📊 Active", "📜 History", "⚖️ Compare", "➕ New Experiment"]
     )
 
     with t_active:
         if active:
             _tab_active(active)
         else:
-            st.info("אין ניסוי פעיל. עבור לטאב **➕ ניסוי חדש** כדי להתחיל.")
+            st.info("No active experiment. Go to **➕ New Experiment** tab to start.")
 
     with t_history:
         _tab_history()

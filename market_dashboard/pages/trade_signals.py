@@ -88,39 +88,70 @@ def _rr_color(rr) -> str:
 
 # ─── Section 1: Signal readiness ──────────────────────────────────────────────
 
+def _velocity_tag(current: int, prev: int | None) -> str:
+    """Returns an HTML velocity badge: ↑ +8, ↓ -3, or empty string."""
+    if prev is None:
+        return ""
+    delta = current - prev
+    if delta > 0:
+        return f'<span style="color:#00c853;font-size:.78em;"> ↑ +{delta}</span>'
+    if delta < 0:
+        return f'<span style="color:#d50000;font-size:.78em;"> ↓ {delta}</span>'
+    return '<span style="color:#666;font-size:.78em;"> →</span>'
+
+
+def _session_threshold_label(sig: dict, thr: int) -> str:
+    """Context-aware threshold label depending on session quality."""
+    sess_quality = sig.get("session_quality", 0) or 0
+    sess_name    = (sig.get("session") or {}).get("name", "")
+    if sess_quality < 2:
+        return f'{thr} pts <span style="color:#ff9800;font-size:.8em;">(off-hours — signal unlikely)</span>'
+    return f'{thr} pts <span style="color:#00c853;font-size:.8em;">(active session ✓)</span>'
+
+
 def _render_signal_readiness(sig: dict):
-    """Progress bar: how close to firing. Shows both LONG and SHORT sides."""
+    """Dual progress bars with velocity and session-aware threshold label."""
     long_pts  = sig.get("long_pts",  0) or 0
     short_pts = sig.get("short_pts", 0) or 0
     thr       = _SIGNAL_THRESHOLD
 
-    long_pct  = min(100, int(long_pts  / thr * 100))
-    short_pct = min(100, int(short_pts / thr * 100))
-    lead      = abs(long_pts - short_pts)
-    leading   = "LONG" if long_pts >= short_pts else "SHORT"
-    best_pts  = max(long_pts, short_pts)
-    pts_to_go = max(0, thr - best_pts)
+    # ── Velocity: compare to previous refresh via session_state ─────────────
+    prev_long  = st.session_state.get("_prev_long_pts")
+    prev_short = st.session_state.get("_prev_short_pts")
+    st.session_state["_prev_long_pts"]  = long_pts
+    st.session_state["_prev_short_pts"] = short_pts
+
+    long_vel  = _velocity_tag(long_pts,  prev_long)
+    short_vel = _velocity_tag(short_pts, prev_short)
+
+    # ── Metrics ──────────────────────────────────────────────────────────────
+    long_pct   = min(100, int(long_pts  / thr * 100))
+    short_pct  = min(100, int(short_pts / thr * 100))
+    lead       = abs(long_pts - short_pts)
+    leading    = "LONG" if long_pts >= short_pts else "SHORT"
+    best_pts   = max(long_pts, short_pts)
+    pts_to_go  = max(0, thr - best_pts)
     lead_to_go = max(0, _DIRECTION_LEAD - lead)
 
-    # Build suffix strings before the f-string to avoid conditional HTML inside {}
-    if long_pts > short_pts:
-        long_suffix = f" — ✅ threshold met" if best_pts >= thr else f" — {pts_to_go} pts to fire"
-    else:
-        long_suffix = ""
-    if short_pts > long_pts:
-        short_suffix = f" — ✅ threshold met" if best_pts >= thr else f" — {pts_to_go} pts to fire"
-    else:
-        short_suffix = ""
+    # Suffix for the leading side only
+    long_suffix  = (f" — ✅ met" if best_pts >= thr else f" — {pts_to_go} to fire") if long_pts > short_pts else ""
+    short_suffix = (f" — ✅ met" if best_pts >= thr else f" — {pts_to_go} to fire") if short_pts > long_pts else ""
 
+    thr_label = _session_threshold_label(sig, thr)
+
+    # ── Render ───────────────────────────────────────────────────────────────
     col1, col2 = st.columns(2)
     with col1:
         st.markdown(
             f'<div style="margin-bottom:4px;">'
             f'<span style="color:#00c853;font-size:.9em;font-weight:bold;">🟢 LONG</span>'
             f'<span style="color:#aaa;font-size:.85em;"> {long_pts}/{thr} pts{long_suffix}</span>'
+            f'{long_vel}'
             f'</div>'
-            f'<div style="background:#222;border-radius:4px;height:10px;overflow:hidden;">'
-            f'<div style="background:#00c853;width:{long_pct}%;height:100%;border-radius:4px;"></div>'
+            f'<div style="background:#1a2a1a;border:1px solid #2a4a2a;border-radius:4px;'
+            f'height:10px;overflow:hidden;">'
+            f'<div style="background:#00c853;width:{long_pct}%;height:100%;border-radius:4px;'
+            f'opacity:.9;"></div>'
             f'</div>',
             unsafe_allow_html=True,
         )
@@ -129,18 +160,29 @@ def _render_signal_readiness(sig: dict):
             f'<div style="margin-bottom:4px;">'
             f'<span style="color:#d50000;font-size:.9em;font-weight:bold;">🔴 SHORT</span>'
             f'<span style="color:#aaa;font-size:.85em;"> {short_pts}/{thr} pts{short_suffix}</span>'
+            f'{short_vel}'
             f'</div>'
-            f'<div style="background:#222;border-radius:4px;height:10px;overflow:hidden;">'
-            f'<div style="background:#d50000;width:{short_pct}%;height:100%;border-radius:4px;"></div>'
+            f'<div style="background:#2a1a1a;border:1px solid #4a2a2a;border-radius:4px;'
+            f'height:10px;overflow:hidden;">'
+            f'<div style="background:#d50000;width:{short_pct}%;height:100%;border-radius:4px;'
+            f'opacity:.9;"></div>'
             f'</div>',
             unsafe_allow_html=True,
         )
 
-    # Lead gap indicator
+    # ── Caption: session-aware threshold + lead status ───────────────────────
     if lead_to_go > 0 and best_pts >= thr:
-        st.caption(f"⚠️ Threshold met but lead gap insufficient — {leading} leads by {lead} pts, need {_DIRECTION_LEAD} pts clear lead")
-    elif best_pts < thr:
-        st.caption(f"Signal fires when leading side reaches {thr} pts with ≥{_DIRECTION_LEAD} pts lead — currently {best_pts} pts ({pts_to_go} to go)")
+        st.markdown(
+            f'<span style="color:#ff9800;font-size:.82em;">⚠️ Threshold met — '
+            f'{leading} leads by {lead} pts, need ≥{_DIRECTION_LEAD} pts clear lead</span>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            f'<span style="color:#666;font-size:.82em;">Threshold: {thr_label} · '
+            f'currently {best_pts} pts</span>',
+            unsafe_allow_html=True,
+        )
 
 
 # ─── Section 2: Signal card + alert ───────────────────────────────────────────
