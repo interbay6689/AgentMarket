@@ -97,6 +97,17 @@ def load_trade_log() -> pd.DataFrame:
                 "f_session", "f_stacked", "f_sentiment", "f_ml"):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
+    # pandas 2.x infers all-NaN columns as float64.
+    # Columns that must hold strings are explicitly cast to object here so that
+    # df.at / df.loc assignments never raise "Invalid value for dtype float64".
+    _STR_COLS = (
+        "id", "trade_type", "date", "time_il",
+        "direction", "htf_bias", "delta_dir", "ml_prediction",
+        "session_name", "outcome", "exit_time", "notes",
+    )
+    for col in _STR_COLS:
+        if col in df.columns:
+            df[col] = df[col].astype(object)
     return df
 
 
@@ -275,13 +286,6 @@ def evaluate_open_trades(df_price: pd.DataFrame) -> int:
         open_mask = df["outcome"] == "OPEN"
         if not open_mask.any():
             return 0
-
-        # pandas 2.x: columns loaded from an all-NaN CSV are inferred as float64.
-        # df.at assignment then raises TypeError when the value is a string.
-        # Cast string-typed columns to object before we write into them.
-        for _col in ("exit_time", "outcome", "notes"):
-            if _col in df.columns:
-                df[_col] = df[_col].astype(object)
 
         time_col = "datetime_il" if "datetime_il" in df_price.columns else "datetime"
         updated_count = 0
