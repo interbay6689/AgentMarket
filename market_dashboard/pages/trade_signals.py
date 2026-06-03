@@ -1,4 +1,5 @@
 """Trade Signals — main page. Shows real-time LONG/SHORT signal with R:R."""
+import os
 import sys
 from pathlib import Path
 
@@ -23,6 +24,29 @@ from modules.signal_validator import validate, load_validation_log, agreement_st
 import json
 from pathlib import Path as _Path
 _LOGS = _Path(__file__).resolve().parents[1] / "logs"
+
+
+def _load_indicator_state() -> dict:
+    """Load last computed indicator state (written by indicators_agent every 5 min)."""
+    p = _LOGS / "indicator_state.json"
+    if p.exists():
+        try:
+            return json.loads(p.read_text())
+        except Exception:
+            pass
+    return {}
+
+
+def _load_signal_agent_log(n: int = 5) -> list:
+    p = _LOGS / "signal_agent_log.json"
+    if p.exists():
+        try:
+            data = json.loads(p.read_text())
+            return data[-n:] if isinstance(data, list) else []
+        except Exception:
+            pass
+    return []
+
 
 # ─── Signal threshold (must match signal_engine.py) ─────────────────────────
 _SIGNAL_THRESHOLD = 55
@@ -704,7 +728,134 @@ def _render_regime_badge(sig: dict):
 
 # ─── Section 9: Cross-Validation ──────────────────────────────────────────────
 
+def _do_agent_run() -> dict:
+    """Run indicators then signal agent (force=True). Returns result dict."""
+    try:
+        from agents import indicators_agent as _ind
+        from agents import signal_agent as _sa
+        ind_state = _ind.run()
+        result    = _sa.run(force=True)
+        result["_indicator_score"] = ind_state.get("composite_score", {}).get("total", 0)
+        return result
+    except ImportError as e:
+        return {"outcome": "error", "reason": f"Import error: {e}"}
+    except Exception as e:
+        return {"outcome": "error", "reason": str(e)}
+
+
+def _render_agent_run_controls():
+    """Status bar + Run button + persistent result, shown at top of cross-validation."""
+    ind_state = _load_indicator_state()
+    comp      = ind_state.get("composite_score", {})
+    ind_score = comp.get("total", 0)
+    threshold = comp.get("threshold", 65)
+    api_ok    = bool(os.environ.get("ANTHROPIC_API_KEY"))
+    computed  = ind_state.get("computed_at_ts", None)
+
+    # Status bar
+    score_color = "#00c853" if ind_score >= threshold else "#ffd600" if ind_score >= 45 else "#d50000"
+    key_color   = "#00c853" if api_ok else "#d50000"
+    key_label   = "✅ API key set" if api_ok else "❌ ANTHROPIC_API_KEY not set"
+    ind_age     = f"indicators at {computed}" if computed else "indicators: not run yet"
+
+    sc1, sc2, sc3 = st.columns([2, 2, 2])
+    sc1.markdown(
+        f'<span style="font-size:.84em; color:{score_color};">'
+        f'Indicator score: <b>{ind_score}</b> / {threshold} threshold'
+        f'{"&nbsp;✅ escalates" if ind_score >= threshold else "&nbsp;⚠️ below threshold"}'
+        f'</span>',
+        unsafe_allow_html=True,
+    )
+    sc2.markdown(
+        f'<span style="font-size:.84em; color:{key_color};">{key_label}</span>',
+        unsafe_allow_html=True,
+    )
+    sc3.markdown(
+        f'<span style="font-size:.84em; color:#666;">{ind_age}</span>',
+        unsafe_allow_html=True,
+    )
+
+    # Run button
+    btn_col, _ = st.columns([1, 3])
+    with btn_col:
+        btn_label = "▶ Run Signal Agent" if api_ok else "▶ Run Signal Agent (no API key)"
+        btn_help  = (
+            "Runs indicators + signal agent (force=True — bypasses score threshold). "
+            "This calls the Claude API and costs tokens."
+            if api_ok
+            else "Set ANTHROPIC_API_KEY environment variable to enable AI analysis."
+        )
+        if st.button(btn_label, key="btn_cv_run", type="primary",
+                     use_container_width=True, help=btn_help, disabled=not api_ok):
+            with st.spinner("Running indicators + Signal Agent (Claude)…"):
+                result = _do_agent_run()
+            st.session_state["_agent_run_result"] = {
+                "ts":     datetime.now().strftime("%H:%M:%S"),
+                "result": result,
+            }
+            # Clear cached validation so the cards update
+            _get_signal.clear()
+            _get_validation.clear()
+            st.rerun()
+
+    # Persistent run result
+    run_info = st.session_state.get("_agent_run_result")
+    if run_info:
+        r       = run_info["result"]
+        ts      = run_info["ts"]
+        outcome = r.get("outcome", "?")
+        ind_sc  = r.get("_indicator_score", "?")
+
+        if outcome == "proposal":
+            txt = r.get("final_text", "")[:200]
+            st.success(
+                f"✅ Proposal written at {ts} · "
+                f"indicator score {ind_sc} · {r.get('tool_calls', 0)} tool calls"
+                + (f"\n\n_{txt}_" if txt else "")
+            )
+        elif outcome == "no_signal":
+            txt = r.get("final_text", "")[:200]
+            st.info(
+                f"⏳ No signal at {ts} · "
+                f"indicator score {ind_sc} · {r.get('tool_calls', 0)} tool calls"
+                + (f"\n\n_{txt}_" if txt else "")
+            )
+        elif outcome == "skipped":
+            st.warning(
+                f"⏭️ Skipped at {ts} — {r.get('reason', 'score below threshold')}  "
+                f"(indicator score: {ind_sc})"
+            )
+        elif outcome == "error":
+            reason = r.get("reason", r.get("error", "unknown error"))
+            st.error(f"❌ Error at {ts}: {reason}")
+        else:
+            st.info(f"Result at {ts}: {outcome}")
+
+        # Show last-run log details in expander
+        last_logs = _load_signal_agent_log(3)
+        if last_logs:
+            with st.expander("📋 Agent run log (last 3 entries)", expanded=False):
+                for entry in reversed(last_logs):
+                    ts_e    = str(entry.get("started_at", ""))[:16]
+                    oc_e    = entry.get("outcome", "?")
+                    calls_e = entry.get("tool_calls", 0)
+                    txt_e   = entry.get("final_text", entry.get("reason", ""))[:300]
+                    icon_e  = {"proposal": "✅", "no_signal": "⏳", "skipped": "⏭️",
+                                "error": "❌"}.get(oc_e, "⚪")
+                    with st.container():
+                        st.markdown(
+                            f"**{ts_e}** — {icon_e} `{oc_e}` · {calls_e} tool calls"
+                        )
+                        if txt_e:
+                            st.caption(txt_e)
+                        st.divider()
+
+    st.divider()
+
+
 def _render_cross_validation(val: dict):
+    _render_agent_run_controls()
+
     agreement = val.get("agreement", "PENDING")
     label     = val.get("consensus_label", "—")
     note      = val.get("note", "")
@@ -871,6 +1022,7 @@ def _render_key_levels_table(sig: dict):
 # ─── Section 11: AI Agent proposals ───────────────────────────────────────────
 
 def _render_agent_proposals():
+    """Show the last 3 proposals written by the Signal Agent."""
     proposals = _load_agent_proposals(3)
     if not proposals:
         st.info(
@@ -905,23 +1057,8 @@ def _render_agent_proposals():
                 if p.get("session"):
                     st.caption(f"Session: {p['session']} | HTF: {p.get('htf_bias','?')}")
 
-    run_col, _ = st.columns([1, 3])
-    if run_col.button("▶ Run Signal Agent Now", key="run_sig_agent"):
-        with st.spinner("Running Indicators + Signal Agent..."):
-            try:
-                from agents import orchestrator
-                result = orchestrator.run_once("indicators_signal")
-                if result.get("outcome") == "proposal":
-                    st.success("✅ New proposal created — refresh to see it.")
-                elif result.get("outcome") == "skipped":
-                    st.warning(f"⏭️ {result.get('reason','no signal')}")
-                elif "error" in result:
-                    st.error(f"Error: {result.get('error','?')}")
-                else:
-                    st.info(f"Result: {result.get('outcome','?')}")
-            except ImportError:
-                st.error("anthropic not installed — run: pip install anthropic")
-        st.rerun()
+    if not proposals:
+        st.caption("Use ▶ Run Signal Agent in the Cross-Validation section above to generate a proposal.")
 
 
 # ─── Main page ─────────────────────────────────────────────────────────────────
