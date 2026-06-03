@@ -7,6 +7,16 @@ _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).parent))  # market_dashboard/
 sys.path.insert(0, str(_ROOT))                  # AgentMarket root — for scores_news
 
+# Load .env from the project root (AgentMarket/.env) if python-dotenv is installed.
+# This lets developers set API keys in a local .env file without touching env vars.
+try:
+    from dotenv import load_dotenv
+    _env_file = _ROOT / ".env"
+    if _env_file.exists():
+        load_dotenv(_env_file, override=False)  # override=False: system env vars win
+except ImportError:
+    pass  # python-dotenv not installed — env vars must be set manually
+
 import streamlit as st
 import os
 import csv
