@@ -307,32 +307,68 @@ def _next_session_info() -> str:
 # ─── Section 3: Trade Parameters ──────────────────────────────────────────────
 
 def _render_rr_metrics(sig: dict):
-    entry   = sig.get("entry")
-    stop    = sig.get("stop")
-    target  = sig.get("target")
-    partial = sig.get("partial_exit")
-    rr      = sig.get("rr")
+    entry     = sig.get("entry")
+    stop      = sig.get("stop")
+    target    = sig.get("target")
+    partial   = sig.get("partial_exit")
+    rr        = sig.get("rr")
+    direction = sig.get("direction", "NEUTRAL")
 
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
-    c1.metric("Entry",      f"{entry:,.1f}"   if entry   else "—")
-    c2.metric("Stop (ATR)", f"{stop:,.1f}"    if stop    else "—",
-              delta=f"{stop - entry:+.1f}"    if stop and entry else None,
-              delta_color="inverse")
-    c3.metric("Target",     f"{target:,.1f}"  if target  else "—",
-              delta=f"{target - entry:+.1f}"  if target and entry else None)
-    c4.metric("1R Partial", f"{partial:,.1f}" if partial else "—",
-              delta=f"{partial - entry:+.1f}" if partial and entry else None)
-    c5.metric("BE Level",   f"{entry:,.1f}"   if entry   else "—",
-              help="Move stop to entry after partial exit is hit")
-    rr_str = f"{rr:.2f}" if rr else "—"
-    rr_col = _rr_color(rr)
-    c6.markdown(
-        f"""<div style="padding:8px 0;">
-            <div style="font-size:.85em; color:#aaa;">R:R Ratio</div>
-            <div style="font-size:1.8em; color:{rr_col}; font-weight:bold;">{rr_str}</div>
+    if not entry or direction == "NEUTRAL":
+        st.markdown(
+            '<div style="background:#161b27; border:1px solid #2a2f3e; '
+            'padding:14px 20px; border-radius:8px; color:#555; '
+            'text-align:center; font-size:.9em;">'
+            '⏸️ No active trade setup — waiting for signal conditions to align'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    color     = _dc(direction)
+    stop_pts  = round(stop - entry, 1)   if stop   else None
+    tgt_pts   = round(target - entry, 1) if target else None
+    risk_usd  = round(abs(stop_pts) * 2, 0)  if stop_pts  else None   # MNQ $2/pt
+    tgt_usd   = round(abs(tgt_pts)  * 2, 0)  if tgt_pts   else None
+    rr_color  = _rr_color(rr)
+    rr_label  = "✅ Good" if rr and rr >= 2.0 else ("⚠️ Marginal" if rr and rr >= 1.5 else "❌ Poor")
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Entry", f"{entry:,.1f}")
+    if stop_pts is not None:
+        c2.metric(
+            "Stop (ATR)",
+            f"{stop:,.1f}",
+            delta=f"{stop_pts:+.1f} pts",
+            delta_color="inverse",
+            help=f"Risk ≈ ${int(risk_usd)} per MNQ contract" if risk_usd else None,
+        )
+    else:
+        c2.metric("Stop", "—")
+    if tgt_pts is not None:
+        c3.metric(
+            "Target",
+            f"{target:,.1f}",
+            delta=f"{tgt_pts:+.1f} pts",
+            help=f"Profit ≈ ${int(tgt_usd)} per MNQ contract" if tgt_usd else None,
+        )
+    else:
+        c3.metric("Target", "—")
+    c4.markdown(
+        f"""<div style="padding:4px 0;">
+            <div style="font-size:.8em; color:#aaa; margin-bottom:2px;">R:R Ratio</div>
+            <div style="font-size:2em; color:{rr_color}; font-weight:bold; line-height:1.1;">
+                {f"{rr:.2f}" if rr else "—"}</div>
+            <div style="font-size:.75em; color:{rr_color}; margin-top:2px;">{rr_label if rr else ""}</div>
         </div>""",
         unsafe_allow_html=True,
     )
+
+    if partial:
+        st.caption(
+            f"1R Partial: {partial:,.1f} ({partial - entry:+.1f} pts) "
+            "· Move stop to BE (break-even) after partial is hit"
+        )
 
 
 # ─── Section 4: NQ Chart ──────────────────────────────────────────────────────
@@ -342,7 +378,7 @@ def _render_nq_chart(df_5m: pd.DataFrame, sig: dict):
         st.warning("No 5-min NQ data available.")
         return
 
-    time_col = "datetime_il" if "datetime_il" in df_5m.columns else "datetime"
+    time_col  = "datetime_il" if "datetime_il" in df_5m.columns else "datetime"
     x = df_5m[time_col].astype(str)
 
     fig = go.Figure()
@@ -351,120 +387,133 @@ def _render_nq_chart(df_5m: pd.DataFrame, sig: dict):
         low=df_5m["low"], close=df_5m["close"],
         name="NQ 5m",
         increasing_line_color="#00c853", decreasing_line_color="#d50000",
+        showlegend=False,
     ))
 
-    # Key level lines
+    # Only the 3 most important structural levels — right side annotations only
     levels = sig.get("levels", {})
-    level_colors = {
-        "pdh": "#ffd600", "pdl": "#ffd600", "pdc": "#ff9800",
-        "poc_20d": "#64b5f6", "poc_5d": "#4fc3f7",
-        "weekly_high": "#ce93d8", "weekly_low": "#ce93d8",
-        "overnight_high": "#80cbc4", "overnight_low": "#80cbc4",
-    }
-    for name, val in levels.items():
-        color = level_colors.get(name, "#9e9e9e")
-        fig.add_hline(y=val, line_color=color, line_dash="dot",
-                      annotation_text=name.upper(), annotation_position="left",
-                      line_width=1, opacity=0.6)
+    KEY_LEVELS = [
+        ("pdh", "#ffd600", "PDH"),
+        ("pdl", "#ffd600", "PDL"),
+        ("pdc", "#ff9800", "PDC"),
+    ]
+    for key, color, label in KEY_LEVELS:
+        val = levels.get(key)
+        if val:
+            fig.add_hline(
+                y=val, line_color=color, line_dash="dot", line_width=1.2, opacity=0.75,
+                annotation_text=label, annotation_position="right",
+                annotation_font=dict(size=10, color=color),
+            )
 
-    # Entry / Stop / Target
-    entry = sig.get("entry")
-    stop  = sig.get("stop")
-    target = sig.get("target")
-    partial = sig.get("partial_exit")
+    # Entry / Stop / Target — only when signal active
+    entry     = sig.get("entry")
+    stop      = sig.get("stop")
+    target    = sig.get("target")
+    partial   = sig.get("partial_exit")
     direction = sig.get("direction", "NEUTRAL")
 
     if entry and direction != "NEUTRAL":
-        fig.add_hline(y=entry, line_color=_dc(direction), line_width=2,
-                      annotation_text="ENTRY", annotation_position="right")
+        fig.add_hline(
+            y=entry, line_color=_dc(direction), line_width=2.5,
+            annotation_text="ENTRY", annotation_position="right",
+            annotation_font=dict(size=11, color=_dc(direction)),
+        )
     if stop:
-        fig.add_hline(y=stop, line_color="#ff5252", line_width=1.5, line_dash="dash",
-                      annotation_text="STOP (ATR)", annotation_position="right")
+        fig.add_hline(
+            y=stop, line_color="#ff5252", line_width=1.5, line_dash="dash",
+            annotation_text="STOP", annotation_position="right",
+            annotation_font=dict(size=10, color="#ff5252"),
+        )
     if target:
-        fig.add_hline(y=target, line_color="#69f0ae", line_width=1.5, line_dash="dash",
-                      annotation_text="TARGET", annotation_position="right")
+        fig.add_hline(
+            y=target, line_color="#69f0ae", line_width=1.5, line_dash="dash",
+            annotation_text="TARGET", annotation_position="right",
+            annotation_font=dict(size=10, color="#69f0ae"),
+        )
     if partial:
-        fig.add_hline(y=partial, line_color="#ffd600", line_width=1, line_dash="dot",
-                      annotation_text="1R Partial", annotation_position="right")
+        fig.add_hline(
+            y=partial, line_color="#ffd600", line_width=1, line_dash="dot",
+            annotation_text="1R", annotation_position="right",
+            annotation_font=dict(size=9, color="#ffd600"),
+        )
 
-    # FVG zones
+    # FVG zones — max 3 most recent, no text label
     try:
         fvgs = detect_fvg(df_5m)
         if not fvgs.empty:
-            for _, fvg in fvgs.tail(5).iterrows():
-                fc = "rgba(0,200,83,0.12)" if fvg["type"] == "bullish" else "rgba(213,0,0,0.12)"
-                fig.add_hrect(y0=fvg["bottom"], y1=fvg["top"], fillcolor=fc,
-                              line_width=0, annotation_text="FVG", annotation_position="left")
-    except Exception:
-        pass
-
-    # Cumulative delta overlay (dual y-axis)
-    try:
-        df_delta = df_5m.copy()
-        delta_series = cumulative_delta(df_delta)
-        if not delta_series.empty:
-            fig.add_trace(go.Scatter(
-                x=x, y=delta_series.values,
-                name="Cum. Delta", yaxis="y2",
-                line=dict(color="#7c4dff", width=1.2, dash="dot"),
-                opacity=0.7,
-            ))
-            fig.update_layout(
-                yaxis2=dict(
-                    overlaying="y", side="left",
-                    showgrid=False, showticklabels=False,
-                    title="",
+            for _, fvg in fvgs.tail(3).iterrows():
+                is_bull = fvg["type"] == "bullish"
+                fig.add_hrect(
+                    y0=fvg["bottom"], y1=fvg["top"],
+                    fillcolor="rgba(0,200,83,0.10)" if is_bull else "rgba(213,0,0,0.10)",
+                    line_color="#00c853" if is_bull else "#d50000",
+                    line_width=0.5, opacity=0.8,
                 )
-            )
     except Exception:
         pass
 
     fig.update_layout(
-        height=420, template="plotly_dark",
-        margin=dict(l=0, r=90, t=30, b=0),
+        height=380, template="plotly_dark",
+        margin=dict(l=0, r=80, t=16, b=0),
         xaxis_rangeslider_visible=False,
-        legend=dict(orientation="h", y=1.02),
-        yaxis=dict(side="right"),
+        yaxis=dict(side="right", tickformat=",.0f"),
     )
     st.plotly_chart(fig, use_container_width=True)
 
 
-# ─── Section 5: Confluence visual bars ────────────────────────────────────────
+# ─── Section 5: Confluence factor rows ───────────────────────────────────────
 
 def _render_confluence_visual(sig: dict):
-    """Horizontal bars per factor — clearer than a plain dataframe."""
     factors = sig.get("factors", [])
     if not factors:
         st.info("No confluence factors computed.")
         return
 
-    max_pts = max((abs(f.get("pts", 0)) for f in factors), default=1) or 1
+    total_long  = sum(f.get("pts", 0) or 0 for f in factors if f.get("side") == "LONG")
+    total_short = sum(f.get("pts", 0) or 0 for f in factors if f.get("side") == "SHORT")
+    st.markdown(
+        f'<div style="font-size:.8em; color:#666; margin-bottom:6px;">'
+        f'<span style="color:#00c853; font-weight:600;">▲ LONG {total_long} pts</span>'
+        f'&nbsp;&nbsp;·&nbsp;&nbsp;'
+        f'<span style="color:#d50000; font-weight:600;">▼ SHORT {total_short} pts</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
     for f in factors:
         fname = f["factor"]
         side  = f["side"]
         pts   = f.get("pts", 0) or 0
-        value = str(f.get("value", ""))
+        value = str(f.get("value", "") or "")
+        if value in ("None", "nan"):
+            value = ""
 
-        color = _dc(side)
-        icon  = _de(side)
-        bar_w = int(abs(pts) / max_pts * 100)
+        color     = _dc(side)
+        icon      = _de(side)
+        pts_label = f"+{pts}" if pts > 0 else (str(pts) if pts < 0 else "0")
+        bg        = f"{color}0e" if pts != 0 else "#111118"
 
-        pts_label = f"+{pts}" if pts > 0 else str(pts)
-
+        value_html = (
+            f'<div style="color:#666; font-size:.76em; margin-top:1px;">{value}</div>'
+            if value else ""
+        )
         st.markdown(
-            f"""<div style="margin:5px 0 7px 0;">
-                <div style="display:flex; justify-content:space-between;
-                            font-size:.82em; margin-bottom:3px;">
-                    <span style="color:#ccc;">{fname}</span>
-                    <span style="color:{color};">{icon} {side} &nbsp;
-                        <span style="color:#888;">{value}</span> &nbsp;
-                        <b style="color:{color};">{pts_label} pts</b>
-                    </span>
+            f"""<div style="display:flex; justify-content:space-between; align-items:center;
+                            border-left:3px solid {color}; background:{bg};
+                            border-radius:0 5px 5px 0; padding:6px 10px; margin:2px 0;">
+                <div style="flex:1; min-width:0;">
+                    <div style="color:#ccc; font-size:.85em; white-space:nowrap;
+                                overflow:hidden; text-overflow:ellipsis;">{fname}</div>
+                    {value_html}
                 </div>
-                <div style="background:#2a2a2a; border-radius:3px; height:6px; overflow:hidden;">
-                    <div style="background:{color}; width:{bar_w}%; height:100%;
-                                border-radius:3px; opacity:.85;"></div>
+                <div style="display:flex; align-items:center; gap:8px;
+                            flex-shrink:0; margin-left:8px;">
+                    <span style="color:{color}; font-size:.8em; font-weight:600;
+                                 white-space:nowrap;">{icon} {side}</span>
+                    <span style="color:{color}; font-weight:bold; font-size:.9em;
+                                 min-width:46px; text-align:right;
+                                 white-space:nowrap;">{pts_label} pts</span>
                 </div>
             </div>""",
             unsafe_allow_html=True,
@@ -825,9 +874,9 @@ def _render_agent_proposals():
     proposals = _load_agent_proposals(3)
     if not proposals:
         st.info(
-            "Signal Agent לא יצר הצעות עדיין. "
-            "לחץ **▶ הפעל עכשיו** כדי להריץ ידנית, "
-            "או הפעל את ה-Orchestrator מהטאב 🤖 Agents.",
+            "Signal Agent has not generated proposals yet. "
+            "Click **▶ Run Now** to trigger manually, "
+            "or start the Orchestrator from the 🤖 Agents tab.",
         )
     else:
         for prop in reversed(proposals):
@@ -844,34 +893,34 @@ def _render_agent_proposals():
                 expanded=(prop is proposals[-1]),
             ):
                 cols = st.columns(4)
-                cols[0].metric("כיוון", direc)
-                cols[1].metric("כניסה",  f"{entry:,.1f}"  if isinstance(entry,  float) else entry)
-                cols[2].metric("סטופ",   f"{stop_p:,.1f}" if isinstance(stop_p, float) else stop_p)
-                cols[3].metric("יעד",    f"{target:,.1f}" if isinstance(target, float) else target)
+                cols[0].metric("Direction", direc)
+                cols[1].metric("Entry",  f"{entry:,.1f}"  if isinstance(entry,  float) else entry)
+                cols[2].metric("Stop",   f"{stop_p:,.1f}" if isinstance(stop_p, float) else stop_p)
+                cols[3].metric("Target", f"{target:,.1f}" if isinstance(target, float) else target)
                 if p.get("reasoning"):
-                    st.markdown(f"**נימוק:** {p['reasoning']}")
+                    st.markdown(f"**Reasoning:** {p['reasoning']}")
                 factors_list = p.get("key_factors", [])
                 if factors_list:
-                    st.markdown("**גורמים:** " + " · ".join(f"`{f}`" for f in factors_list))
+                    st.markdown("**Key Factors:** " + " · ".join(f"`{f}`" for f in factors_list))
                 if p.get("session"):
                     st.caption(f"Session: {p['session']} | HTF: {p.get('htf_bias','?')}")
 
     run_col, _ = st.columns([1, 3])
-    if run_col.button("▶ הפעל Signal Agent עכשיו", key="run_sig_agent"):
-        with st.spinner("מריץ Indicators + Signal Agent..."):
+    if run_col.button("▶ Run Signal Agent Now", key="run_sig_agent"):
+        with st.spinner("Running Indicators + Signal Agent..."):
             try:
                 from agents import orchestrator
                 result = orchestrator.run_once("indicators_signal")
                 if result.get("outcome") == "proposal":
-                    st.success("✅ הצעה חדשה נוצרה! רענן.")
+                    st.success("✅ New proposal created — refresh to see it.")
                 elif result.get("outcome") == "skipped":
                     st.warning(f"⏭️ {result.get('reason','no signal')}")
                 elif "error" in result:
-                    st.error(f"שגיאה: {result.get('error','?')}")
+                    st.error(f"Error: {result.get('error','?')}")
                 else:
-                    st.info(f"תוצאה: {result.get('outcome','?')}")
+                    st.info(f"Result: {result.get('outcome','?')}")
             except ImportError:
-                st.error("anthropic לא מותקן — הרץ: pip install anthropic")
+                st.error("anthropic not installed — run: pip install anthropic")
         st.rerun()
 
 
@@ -948,18 +997,19 @@ def app():
     st.markdown("### Trade Parameters")
     _render_rr_metrics(sig)
 
-    # ── Chart + Confluence side-by-side ──────────────────────────
-    chart_col, conf_col = st.columns([3, 2])
+    # ── Chart (full width) ────────────────────────────────────────
+    st.markdown("### NQ 5-min Chart")
+    df_5m = _get_5m()
+    _render_nq_chart(df_5m, sig)
 
-    with chart_col:
-        st.markdown("### NQ 5-min Chart")
-        df_5m = _get_5m()
-        _render_nq_chart(df_5m, sig)
+    # ── Confluence + Macro side-by-side below chart ───────────────
+    conf_col, macro_col = st.columns([3, 2])
 
     with conf_col:
         st.markdown("### Confluence Factors")
         _render_confluence_visual(sig)
 
+    with macro_col:
         st.markdown("### Macro Context")
         _render_macro_context(sig, session)
 
@@ -990,7 +1040,7 @@ def app():
 
     # ── AI Agent Proposals ────────────────────────────────────────
     st.divider()
-    st.markdown("### 🤖 AI Signal Agent — הצעות אחרונות")
+    st.markdown("### 🤖 AI Signal Agent")
     _render_agent_proposals()
 
     # ── Score history sparkline ───────────────────────────────────
