@@ -114,8 +114,8 @@ def _run_daily_pipeline() -> list[dict]:
     return results
 
 
-def _show_run_button(label: str = "▶️ Run Daily Analysis"):
-    if st.button(label, type="primary"):
+def _show_run_button(label: str = "▶️ Run Daily Analysis", key: str = "btn_run_pipeline"):
+    if st.button(label, type="primary", key=key):
         with st.spinner("Running pipeline… (up to 5 min)"):
             results = _run_daily_pipeline()
         all_ok = True
@@ -243,7 +243,7 @@ def app():
         df = _load_score_log()
     except FileNotFoundError:
         st.error("❌ score_log.csv not found — run initial analysis first.")
-        _show_run_button("▶️ Run Initial Analysis")
+        _show_run_button("▶️ Run Initial Analysis", key="btn_run_initial")
         return
     except Exception as e:
         st.error(f"❌ Data load error: {e}")
@@ -259,7 +259,7 @@ def app():
         st.warning(
             f"⚠️ Data is **{age} day(s) old** — last update: **{df['date'].max().date()}**"
         )
-        _show_run_button()
+        _show_run_button(key="btn_run_stale")
     else:
         st.caption(f"Last updated: {df['date'].max().date()} · refreshed {datetime.now().strftime('%H:%M:%S')}")
 
@@ -403,7 +403,7 @@ def app():
         col_a, col_b = st.columns(2)
         with col_a:
             st.markdown("**Run daily analysis manually**")
-            _show_run_button()
+            _show_run_button(key="btn_run_manual")
         with col_b:
             st.markdown("**Check yesterday's prediction** (after 20:00 IL)")
             if st.button("📊 Compare prediction"):
