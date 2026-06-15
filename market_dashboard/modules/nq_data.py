@@ -79,6 +79,7 @@ def load_nq_hourly_cache() -> pd.DataFrame:
     if HOURLY_CACHE.exists():
         existing = pd.read_csv(HOURLY_CACHE, parse_dates=["datetime"])
         combined = pd.concat([existing, fresh], ignore_index=True)
+        combined["datetime"] = pd.to_datetime(combined["datetime"], utc=True)
         combined = combined.drop_duplicates(subset=["datetime"]).sort_values("datetime")
     else:
         combined = fresh.sort_values("datetime")
