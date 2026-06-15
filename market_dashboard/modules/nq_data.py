@@ -62,9 +62,7 @@ def fetch_nq_hourly(days_back: int = 60) -> pd.DataFrame:
     df = df.reset_index()
     col0 = df.columns[0]
     df = df.rename(columns={col0: "datetime"})
-    df["datetime"] = pd.to_datetime(df["datetime"])
-    if df["datetime"].dt.tz is None:
-        df["datetime"] = df["datetime"].dt.tz_localize("UTC")
+    df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
     df["datetime_et"] = df["datetime"].dt.tz_convert(ET_TZ)
     df["datetime_il"] = df["datetime"].dt.tz_convert(IL_TZ)
     return df[["datetime", "datetime_et", "datetime_il", "open", "high", "low", "close", "volume"]].dropna()
@@ -82,6 +80,7 @@ def load_nq_hourly_cache() -> pd.DataFrame:
         combined["datetime"] = pd.to_datetime(combined["datetime"], utc=True)
         combined = combined.drop_duplicates(subset=["datetime"]).sort_values("datetime")
     else:
+        fresh["datetime"] = pd.to_datetime(fresh["datetime"], utc=True)
         combined = fresh.sort_values("datetime")
     HOURLY_CACHE.parent.mkdir(parents=True, exist_ok=True)
     combined.to_csv(HOURLY_CACHE, index=False)
