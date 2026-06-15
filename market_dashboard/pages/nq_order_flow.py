@@ -258,14 +258,15 @@ def app():
 
         ai_c1, ai_c2, ai_c3, ai_c4, ai_c5 = st.columns([2, 1, 1, 1, 2])
         with ai_c1:
-            dir_emoji = {"LONG": "▲ LONG", "SHORT": "▼ SHORT", "NEUTRAL": "— NEUTRAL"}.get(direction, "—")
+            dir_emoji    = {"LONG": "▲ LONG", "SHORT": "▼ SHORT", "NEUTRAL": "— NEUTRAL"}.get(direction, "—")
+            alert_html   = '<br><span style="color:#ffd600;font-size:0.8rem">🔔 ALERT — Trade Signal!</span>' if alert else ""
+            blackout_html = '<br><span style="color:#ff6e40;font-size:0.8rem">⛔ BLACKOUT</span>' if blackout else ""
             st.markdown(
                 f"<div style='background:{sig_color}22;border-left:4px solid {sig_color};"
                 f"padding:12px 16px;border-radius:6px;'>"
                 f"<span style='font-size:1.4rem;font-weight:700;color:{sig_color}'>{dir_emoji}</span>"
                 f"<br><span style='font-size:0.85rem;color:#ccc'>Confidence: {confidence}%</span>"
-                f"{'<br><span style=\"color:#ffd600;font-size:0.8rem\">🔔 ALERT — Trade Signal!</span>' if alert else ''}"
-                f"{'<br><span style=\"color:#ff6e40;font-size:0.8rem\">⛔ BLACKOUT</span>' if blackout else ''}"
+                f"{alert_html}{blackout_html}"
                 f"</div>",
                 unsafe_allow_html=True,
             )
