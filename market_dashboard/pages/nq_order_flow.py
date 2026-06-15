@@ -12,6 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from modules import nq_data, nq_calculations
+from modules.gex_analyzer import get_gex_data, render_gex_widget
 
 IL_TZ = pytz.timezone("Asia/Jerusalem")
 ET_TZ = pytz.timezone("America/New_York")
@@ -82,6 +83,9 @@ def _get_hourly():
 def _get_15m():
     return nq_data.fetch_nq_15m(days_back=5)
 
+def _get_gex():
+    return get_gex_data()
+
 @st.cache_data(ttl=120)
 def _get_signal():
     """Live AI signal — 2-minute cache so it stays fresh without hammering yfinance."""
@@ -125,8 +129,9 @@ def app():
         df_daily = _get_daily()
         df_hourly = _get_hourly()
         df_15m   = _get_15m()
-        corr     = _get_corr()
-        sig      = _get_signal()
+        corr       = _get_corr()
+        sig        = _get_signal()
+        gex_result = _get_gex()
 
     current_session = nq_data.current_session_israel()
     levels = nq_calculations.calculate_key_levels(df_daily, df_hourly)
@@ -231,6 +236,14 @@ def app():
             else:
                 st.metric("Order Block", "None detected")
 
+        # ── GEX Widget ───────────────────────────────────────────────────────
+        st.markdown("---")
+        st.markdown("### 📐 Gamma Exposure — QQQ / NQ Proxy")
+        if gex_result.get("error") and not gex_result.get("qqq_spot"):
+            st.warning(f"⚠️ GEX unavailable — {gex_result['error']}")
+        else:
+            render_gex_widget(st, gex_result)
+
         # ── AI Signal Card ───────────────────────────────────────────────────
         st.divider()
         direction   = sig.get("direction", "NEUTRAL")
@@ -245,14 +258,15 @@ def app():
 
         ai_c1, ai_c2, ai_c3, ai_c4, ai_c5 = st.columns([2, 1, 1, 1, 2])
         with ai_c1:
-            dir_emoji = {"LONG": "▲ LONG", "SHORT": "▼ SHORT", "NEUTRAL": "— NEUTRAL"}.get(direction, "—")
+            dir_emoji    = {"LONG": "▲ LONG", "SHORT": "▼ SHORT", "NEUTRAL": "— NEUTRAL"}.get(direction, "—")
+            alert_html   = '<br><span style="color:#ffd600;font-size:0.8rem">🔔 ALERT — Trade Signal!</span>' if alert else ""
+            blackout_html = '<br><span style="color:#ff6e40;font-size:0.8rem">⛔ BLACKOUT</span>' if blackout else ""
             st.markdown(
                 f"<div style='background:{sig_color}22;border-left:4px solid {sig_color};"
                 f"padding:12px 16px;border-radius:6px;'>"
                 f"<span style='font-size:1.4rem;font-weight:700;color:{sig_color}'>{dir_emoji}</span>"
                 f"<br><span style='font-size:0.85rem;color:#ccc'>Confidence: {confidence}%</span>"
-                f"{'<br><span style=\"color:#ffd600;font-size:0.8rem\">🔔 ALERT — Trade Signal!</span>' if alert else ''}"
-                f"{'<br><span style=\"color:#ff6e40;font-size:0.8rem\">⛔ BLACKOUT</span>' if blackout else ''}"
+                f"{alert_html}{blackout_html}"
                 f"</div>",
                 unsafe_allow_html=True,
             )
