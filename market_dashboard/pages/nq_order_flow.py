@@ -83,7 +83,6 @@ def _get_hourly():
 def _get_15m():
     return nq_data.fetch_nq_15m(days_back=5)
 
-@st.cache_data(ttl=900)
 def _get_gex():
     return get_gex_data()
 
